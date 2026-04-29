@@ -12,6 +12,38 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  frontend:
+    name: Frontend / Flutter
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Print Flutter version
+        run: flutter --version
+
+      - name: Install frontend dependencies
+        run: flutter pub get
+
+      - name: Check Dart formatting
+        run: dart format --set-exit-if-changed .
+
+      - name: Analyze frontend
+        run: flutter analyze
+
+      - name: Test frontend
+        run: flutter test
   backend:
     name: Backend / FastAPI
     runs-on: ubuntu-latest
