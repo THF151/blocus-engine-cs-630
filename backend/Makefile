@@ -1,4 +1,4 @@
-.PHONY: help install build-engine dev run run-uvicorn test coverage lint format typecheck check clean
+.PHONY: help install build-engine dev run run-uvicorn test coverage lint format format-check typecheck check clean
 
 help:
 	@echo "Available commands:"
@@ -11,9 +11,10 @@ help:
 	@echo "  make test          Build engine and run tests"
 	@echo "  make coverage      Build engine and run tests with coverage report"
 	@echo "  make lint          Run Ruff linting"
-	@echo "  make format        Format code"
+	@echo "  make format        Auto-fix lint issues and format code"
+	@echo "  make format-check  Check code formatting"
 	@echo "  make typecheck     Run mypy"
-	@echo "  make check         Build engine, then run lint, typecheck, and coverage"
+	@echo "  make check         Build engine, then run format-check, lint, typecheck, and coverage"
 	@echo "  make clean         Remove caches and coverage artifacts"
 
 install:
@@ -41,12 +42,16 @@ lint:
 	uv run ruff check .
 
 format:
+	uv run ruff check . --fix
 	uv run ruff format .
+
+format-check:
+	uv run ruff format --check .
 
 typecheck:
 	uv run mypy src
 
-check: build-engine lint typecheck coverage
+check: build-engine format-check lint typecheck coverage
 
 clean:
 	rm -rf .pytest_cache .ruff_cache .mypy_cache htmlcov .coverage coverage.xml

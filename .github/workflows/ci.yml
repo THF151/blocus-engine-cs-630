@@ -1,0 +1,136 @@
+name: CI
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: Frontend / Flutter
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Print Flutter version
+        run: flutter --version
+
+      - name: Install frontend dependencies
+        run: flutter pub get
+
+      - name: Check Dart formatting
+        run: dart format --set-exit-if-changed .
+
+      - name: Analyze frontend
+        run: flutter analyze
+
+      - name: Test frontend
+        run: flutter test
+  backend:
+    name: Backend / FastAPI
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.14
+
+      - name: Install backend dependencies
+        run: uv sync --dev
+
+      - name: Build Rust Python engine binding
+        run: uv run maturin develop --manifest-path ../engine/crates/blocus-python/Cargo.toml
+
+      - name: Check backend formatting
+        run: uv run ruff format --check .
+
+      - name: Lint backend
+        run: uv run ruff check .
+
+      - name: Typecheck backend
+        run: uv run mypy src
+
+      - name: Test backend with coverage
+        run: uv run pytest --cov=blocus_backend --cov-report=term-missing --cov-report=xml
+
+  engine:
+    name: Engine / Rust
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: engine
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy, llvm-tools-preview
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        working-directory: backend
+        run: uv python install 3.14
+
+      - name: Install backend dependencies for Python binding tests
+        working-directory: backend
+        run: uv sync --dev
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: Check Rust formatting
+        run: cargo fmt --all -- --check
+
+      - name: Lint Rust
+        run: |
+          cargo clippy -p blocus-core --all-targets --all-features -- -D warnings
+          cargo clippy -p blocus-python --lib --all-features -- -D warnings
+
+      - name: Test Rust core with coverage
+        run: cargo llvm-cov -p blocus-core --fail-under-lines 85
+
+      - name: Test Python binding
+        run: |
+          cd ../backend
+          uv run maturin develop --manifest-path ../engine/crates/blocus-python/Cargo.toml
+          uv run pytest ../engine/crates/blocus-python/python_tests
