@@ -1,0 +1,18 @@
+[package]
+name = "blocus-python"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+name = "blocus_engine"
+crate-type = ["cdylib"]
+
+[dependencies]
+blocus-core = { path = "../blocus-core" }
+pyo3 = { version = "0.28.3", features = ["extension-module"] }
+
+[lints]
+workspace = true

@@ -1,0 +1,20 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/blocus-core", "crates/blocus-python",
+]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.95"
+license = "MIT"
+repository = "https://github.com/THF151/blocus-engine-cs-630"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = "warn"
+unwrap_used = "warn"
+expect_used = "warn"
