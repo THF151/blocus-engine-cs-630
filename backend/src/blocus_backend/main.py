@@ -1,6 +1,5 @@
-from fastapi import FastAPI
-
 import blocus_engine
+from fastapi import FastAPI
 
 app = FastAPI(title="Blocus Backend")
 

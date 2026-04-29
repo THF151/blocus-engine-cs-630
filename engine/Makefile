@@ -10,7 +10,7 @@ help:
 	@echo "  make test          Run Rust core and Python binding tests"
 	@echo "  make test-rust     Run Rust core tests"
 	@echo "  make test-python   Build Python extension and run Python binding tests"
-	@echo "  make coverage      Run Rust core coverage in terminal"
+	@echo "  make coverage      Run Rust core coverage"
 	@echo "  make coverage-html Run Rust core coverage and open HTML report"
 	@echo "  make check         Run fmt-check, lint, coverage, and Python binding tests"
 	@echo "  make clean         Remove Rust build artifacts"
@@ -39,7 +39,7 @@ test-python:
 test: test-rust test-python
 
 coverage:
-	cargo llvm-cov -p blocus-core
+	cargo llvm-cov -p blocus-core --fail-under-lines 85
 
 coverage-html:
 	cargo llvm-cov -p blocus-core --html --open
