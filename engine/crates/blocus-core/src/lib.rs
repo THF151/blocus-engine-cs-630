@@ -11,6 +11,7 @@ pub mod config;
 pub mod engine;
 pub mod error;
 pub mod ids;
+pub mod pieces;
 
 pub use api::{
     Command, DomainEvent, DomainEventKind, DomainResponse, DomainResponseKind, GameResult,
@@ -22,10 +23,11 @@ pub use board::{
     PLAYABLE_MASK, ROW_PADDING_BITS, ROW_STRIDE,
 };
 pub use color::{PLAYER_COLOR_COUNT, PlayerColor, TurnOrder, TurnOrderPolicy};
-pub use config::{GameConfig, GameMode, PlayerSlots, SharedColorTurn};
+pub use config::{GameConfig, GameMode, PlayerSlots, SharedColorTurn, TurnState};
 pub use engine::engine_health;
 pub use error::{DomainError, EngineError, InputError, RuleViolation};
 pub use ids::{
     CommandId, GameId, MAX_ORIENTATION_COUNT, OrientationId, PIECE_COUNT, PieceId, PlayerId,
     SmallIdError, StateVersion, ZobristHash,
 };
+pub use pieces::{ALL_PIECES_MASK, PieceInventory};

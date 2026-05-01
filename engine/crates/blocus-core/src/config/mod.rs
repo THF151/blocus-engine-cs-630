@@ -1,4 +1,4 @@
-//! Game configuration and player/color assignment.
+//! Game configuration, player/color assignment, and turn state.
 
 use crate::{
     GameId, InputError, PLAYER_COLOR_COUNT, PlayerColor, PlayerId, ScoringMode, TurnOrder,
@@ -125,11 +125,6 @@ impl PlayerSlots {
 
     /// Creates a three-player assignment with one shared color.
     ///
-    /// `owned_colors` must contain exactly three distinct colors controlled by
-    /// exactly three distinct players. `shared_color_turn` must describe the
-    /// remaining shared color and must alternate over exactly the same three
-    /// players.
-    ///
     /// # Errors
     ///
     /// Returns [`InputError::InvalidGameConfig`] if colors or players are
@@ -144,11 +139,7 @@ impl PlayerSlots {
         for (color, player_id) in owned_colors {
             let index = color.index();
 
-            if controllers[index].is_some() {
-                return Err(InputError::InvalidGameConfig);
-            }
-
-            if color == shared_color_turn.color() {
+            if controllers[index].is_some() || color == shared_color_turn.color() {
                 return Err(InputError::InvalidGameConfig);
             }
 
@@ -215,17 +206,12 @@ impl PlayerSlots {
     }
 
     /// Returns all permanent color controllers.
-    ///
-    /// In three-player games, the shared color has no permanent controller and
-    /// is represented as `None`.
     #[must_use]
     pub const fn controllers(self) -> [Option<PlayerId>; PLAYER_COLOR_COUNT] {
         self.controllers
     }
 
     /// Returns the permanent controller for a color.
-    ///
-    /// In three-player games this returns `None` for the shared color.
     #[must_use]
     pub const fn controller_of(self, color: PlayerColor) -> Option<PlayerId> {
         self.controllers[color.index()]
@@ -247,9 +233,6 @@ impl PlayerSlots {
     }
 
     /// Returns true if the player can ever control the color.
-    ///
-    /// For the three-player shared color, all players in the shared-color cycle
-    /// can control it on their alternating shared turns.
     #[must_use]
     pub fn can_control_color(self, player_id: PlayerId, color: PlayerColor) -> bool {
         if self.controller_of(color) == Some(player_id) {
@@ -263,10 +246,6 @@ impl PlayerSlots {
     }
 
     /// Returns the player who controls a color for a specific turn context.
-    ///
-    /// For normal colors this is the permanent controller. For a shared color,
-    /// `shared_turn_index` chooses the alternating player from the shared-color
-    /// cycle.
     #[must_use]
     pub const fn turn_controller_of(
         self,
@@ -279,6 +258,124 @@ impl PlayerSlots {
             }
             _ => self.controller_of(color),
         }
+    }
+}
+
+/// Turn progression state.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+pub struct TurnState {
+    current_color: PlayerColor,
+    passed_mask: u8,
+    shared_color_turn_index: usize,
+}
+
+impl TurnState {
+    /// Creates turn state from the first color in a turn order.
+    #[must_use]
+    pub const fn new(turn_order: TurnOrder) -> Self {
+        Self {
+            current_color: turn_order.first(),
+            passed_mask: 0,
+            shared_color_turn_index: 0,
+        }
+    }
+
+    /// Creates turn state from raw validated fields.
+    #[must_use]
+    pub const fn from_parts(
+        current_color: PlayerColor,
+        passed_mask: u8,
+        shared_color_turn_index: usize,
+    ) -> Self {
+        Self {
+            current_color,
+            passed_mask: passed_mask & all_color_bits(),
+            shared_color_turn_index,
+        }
+    }
+
+    /// Returns the current color.
+    #[must_use]
+    pub const fn current_color(self) -> PlayerColor {
+        self.current_color
+    }
+
+    /// Returns the passed-color bit mask.
+    #[must_use]
+    pub const fn passed_mask(self) -> u8 {
+        self.passed_mask
+    }
+
+    /// Returns the shared-color turn index.
+    #[must_use]
+    pub const fn shared_color_turn_index(self) -> usize {
+        self.shared_color_turn_index
+    }
+
+    /// Returns true if the color has permanently passed.
+    #[must_use]
+    pub const fn is_passed(self, color: PlayerColor) -> bool {
+        self.passed_mask & color_bit(color) != 0
+    }
+
+    /// Marks a color as passed.
+    pub const fn mark_passed(&mut self, color: PlayerColor) {
+        self.passed_mask |= color_bit(color);
+    }
+
+    /// Returns a copy with a color marked as passed.
+    #[must_use]
+    pub const fn marked_passed(mut self, color: PlayerColor) -> Self {
+        self.mark_passed(color);
+        self
+    }
+
+    /// Returns true if every color has passed.
+    #[must_use]
+    pub const fn all_colors_passed(self) -> bool {
+        self.passed_mask == all_color_bits()
+    }
+
+    /// Returns the number of colors that have passed.
+    #[must_use]
+    pub const fn passed_count(self) -> u32 {
+        self.passed_mask.count_ones()
+    }
+
+    /// Returns the active player for the current color.
+    #[must_use]
+    pub const fn current_player(self, player_slots: PlayerSlots) -> Option<PlayerId> {
+        player_slots.turn_controller_of(self.current_color, self.shared_color_turn_index)
+    }
+
+    /// Advances to the next non-passed color.
+    ///
+    /// Returns `None` if all colors have passed. When the current color is the
+    /// shared color in a three-player game, the shared turn index advances
+    /// before the next turn is selected.
+    pub fn advance(&mut self, turn_order: TurnOrder, player_slots: PlayerSlots) -> Option<Self> {
+        if player_slots.shared_color() == Some(self.current_color) {
+            self.shared_color_turn_index = self.shared_color_turn_index.saturating_add(1);
+        }
+
+        if self.all_colors_passed() {
+            return None;
+        }
+
+        let mut next_color = turn_order.next_after(self.current_color);
+        let mut checked = 0usize;
+
+        while checked < PLAYER_COLOR_COUNT {
+            if !self.is_passed(next_color) {
+                self.current_color = next_color;
+                return Some(*self);
+            }
+
+            next_color = turn_order.next_after(next_color);
+            checked += 1;
+        }
+
+        None
     }
 }
 
@@ -350,6 +447,22 @@ impl GameConfig {
     pub const fn player_slots(self) -> PlayerSlots {
         self.player_slots
     }
+}
+
+const fn color_bit(color: PlayerColor) -> u8 {
+    match color {
+        PlayerColor::Blue => 1,
+        PlayerColor::Yellow => 1 << 1,
+        PlayerColor::Red => 1 << 2,
+        PlayerColor::Green => 1 << 3,
+    }
+}
+
+const fn all_color_bits() -> u8 {
+    color_bit(PlayerColor::Blue)
+        | color_bit(PlayerColor::Yellow)
+        | color_bit(PlayerColor::Red)
+        | color_bit(PlayerColor::Green)
 }
 
 fn has_duplicate_assigned_players(controllers: [Option<PlayerId>; PLAYER_COLOR_COUNT]) -> bool {

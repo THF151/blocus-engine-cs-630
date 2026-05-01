@@ -48,9 +48,20 @@ fn board_index(row: u8, col: u8) -> BoardIndex {
 }
 
 fn game_state(version: u64) -> blocus_core::GameState {
+    let Ok(player_slots) = blocus_core::PlayerSlots::two_player(player_id(1), player_id(2)) else {
+        panic!("two-player slots should be valid");
+    };
+
     blocus_core::GameState {
         schema_version: StateSchemaVersion::CURRENT,
+        game_id: game_id(99),
+        mode: blocus_core::GameMode::TwoPlayer,
+        scoring: ScoringMode::Basic,
+        turn_order: blocus_core::TurnOrder::OFFICIAL_FIXED,
+        player_slots,
         board: BoardState::EMPTY,
+        inventories: [blocus_core::PieceInventory::EMPTY; blocus_core::PLAYER_COLOR_COUNT],
+        turn: blocus_core::TurnState::new(blocus_core::TurnOrder::OFFICIAL_FIXED),
         status: GameStatus::InProgress,
         version: StateVersion::new(version),
         hash: ZobristHash::new(version),

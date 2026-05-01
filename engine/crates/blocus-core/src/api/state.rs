@@ -1,6 +1,9 @@
 //! Public state-related API DTOs.
 
-use crate::{BoardState, StateVersion, ZobristHash};
+use crate::{
+    BoardState, GameId, GameMode, PLAYER_COLOR_COUNT, PieceInventory, PlayerSlots, StateVersion,
+    TurnOrder, TurnState, ZobristHash,
+};
 
 /// Current serialized state schema version.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -56,15 +59,30 @@ pub enum ScoringMode {
     Advanced,
 }
 
-/// Minimal public game-state DTO for the current contract slice.
+/// Public game-state DTO.
 ///
-/// This shape is intentionally still small.
+/// This is a value object. It deliberately stores compact domain primitives
+/// instead of Python-facing wrapper objects.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct GameState {
     /// State schema version.
     pub schema_version: StateSchemaVersion,
+    /// Game identifier.
+    pub game_id: GameId,
+    /// Game mode.
+    pub mode: GameMode,
+    /// Scoring mode.
+    pub scoring: ScoringMode,
+    /// Game-specific turn order.
+    pub turn_order: TurnOrder,
+    /// Player/color assignment.
+    pub player_slots: PlayerSlots,
     /// Board occupancy state.
     pub board: BoardState,
+    /// Per-color inventories.
+    pub inventories: [PieceInventory; PLAYER_COLOR_COUNT],
+    /// Turn progression state.
+    pub turn: TurnState,
     /// Game status.
     pub status: GameStatus,
     /// Monotonic state version.
