@@ -189,3 +189,42 @@ fn board_index_is_copy_comparable_ordered_and_hashable() {
     assert!(indices.contains(&first));
     assert!(indices.contains(&second));
 }
+
+#[test]
+fn board_index_supports_try_from_u16_and_into_u16() {
+    let Ok(index) = BoardIndex::try_from(0u16) else {
+        panic!("bit index 0 should be valid");
+    };
+
+    let raw: u16 = index.into();
+
+    assert_eq!(raw, 0);
+    assert_eq!(
+        BoardIndex::try_from(20u16),
+        Err(InputError::InvalidBoardIndex)
+    );
+}
+
+#[test]
+fn board_index_displays_padded_bit_index() {
+    let Ok(index) = BoardIndex::from_row_col(1, 2) else {
+        panic!("row 1 col 2 should be valid");
+    };
+
+    assert_eq!(index.bit_index(), 34);
+    assert_eq!(index.to_string(), "34");
+}
+
+#[test]
+fn board_index_runtime_accessors_cover_row_col_lane_offset_and_lane_bit() {
+    let Ok(index) = BoardIndex::from_row_col(4, 3) else {
+        panic!("row 4 col 3 should be valid");
+    };
+
+    assert_eq!(index.row(), 4);
+    assert_eq!(index.col(), 3);
+    assert_eq!(index.bit_index(), 131);
+    assert_eq!(index.lane(), 1);
+    assert_eq!(index.offset(), 3);
+    assert_eq!(index.lane_bit(), 8);
+}
