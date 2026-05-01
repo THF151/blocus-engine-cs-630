@@ -238,7 +238,6 @@ fn playable_mask_has_exactly_four_hundred_cells() {
 }
 
 #[test]
-
 fn board_geometry_accounts_for_playable_and_padding_bits() {
     assert_eq!(BOARD_BITS, 640);
     assert_eq!(BOARD_LANES, 5);

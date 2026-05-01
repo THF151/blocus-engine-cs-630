@@ -3,7 +3,6 @@
 use crate::board::{BOARD_LANES, BoardIndex};
 use crate::{BOARD_SIZE, ROW_STRIDE};
 
-/// Mask containing all playable cells and no row-padding bits.
 /// Mask containing the 20 playable cells of one padded 32-bit row.
 pub const ROW_PLAYABLE_MASK: u128 = (1u128 << BOARD_SIZE) - 1;
 
