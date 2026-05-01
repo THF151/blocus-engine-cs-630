@@ -1,7 +1,10 @@
 //! Core domain engine for Blocus.
 
-/// Returns true for now.
-#[must_use]
-pub const fn engine_health() -> bool {
-    true
-}
+pub mod engine;
+pub mod ids;
+
+pub use engine::engine_health;
+pub use ids::{
+    CommandId, GameId, MAX_ORIENTATION_COUNT, OrientationId, PIECE_COUNT, PieceId, PlayerId,
+    SmallIdError, StateVersion, ZobristHash,
+};

@@ -10,3 +10,4 @@ repository.workspace = true
 workspace = true
 
 [dependencies]
+uuid = { version = "1.23.1", features = ["v4"] }
