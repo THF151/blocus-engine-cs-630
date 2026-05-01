@@ -10,8 +10,11 @@ pub mod color;
 pub mod config;
 pub mod engine;
 pub mod error;
+pub mod hash;
 pub mod ids;
+pub mod movegen;
 pub mod pieces;
+pub mod rules;
 
 pub use api::{
     Command, DomainEvent, DomainEventKind, DomainResponse, DomainResponseKind, GameResult,
@@ -24,7 +27,7 @@ pub use board::{
 };
 pub use color::{PLAYER_COLOR_COUNT, PlayerColor, TurnOrder, TurnOrderPolicy};
 pub use config::{GameConfig, GameMode, PlayerSlots, SharedColorTurn, TurnState};
-pub use engine::engine_health;
+pub use engine::{BlocusEngine, engine_health};
 pub use error::{DomainError, EngineError, InputError, RuleViolation};
 pub use ids::{
     CommandId, GameId, MAX_ORIENTATION_COUNT, OrientationId, PIECE_COUNT, PieceId, PlayerId,

@@ -1,8 +1,9 @@
 //! Public state-related API DTOs.
 
+use crate::pieces::PieceInventory;
 use crate::{
-    BoardState, GameId, GameMode, PLAYER_COLOR_COUNT, PieceInventory, PlayerSlots, StateVersion,
-    TurnOrder, TurnState, ZobristHash,
+    BoardState, GameId, GameMode, PLAYER_COLOR_COUNT, PlayerSlots, StateVersion, TurnOrder,
+    TurnState, ZobristHash,
 };
 
 /// Current serialized state schema version.

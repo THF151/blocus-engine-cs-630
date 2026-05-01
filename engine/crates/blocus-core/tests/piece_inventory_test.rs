@@ -1,4 +1,5 @@
-use blocus_core::{ALL_PIECES_MASK, PIECE_COUNT, PieceId, PieceInventory};
+use blocus_core::pieces::ALL_PIECES_MASK;
+use blocus_core::{PIECE_COUNT, PieceId, PieceInventory};
 use std::collections::HashSet;
 
 fn piece_id(value: u8) -> PieceId {
