@@ -7,6 +7,7 @@
 pub mod api;
 pub mod board;
 pub mod color;
+pub mod config;
 pub mod engine;
 pub mod error;
 pub mod ids;
@@ -21,6 +22,7 @@ pub use board::{
     PLAYABLE_MASK, ROW_PADDING_BITS, ROW_STRIDE,
 };
 pub use color::{PLAYER_COLOR_COUNT, PlayerColor, TurnOrder, TurnOrderPolicy};
+pub use config::{GameConfig, GameMode, PlayerSlots, SharedColorTurn};
 pub use engine::engine_health;
 pub use error::{DomainError, EngineError, InputError, RuleViolation};
 pub use ids::{
