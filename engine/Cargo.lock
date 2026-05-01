@@ -27,6 +27,7 @@ version = "0.1.0"
 dependencies = [
  "blocus-core",
  "pyo3",
+ "uuid",
 ]
 
 [[package]]
