@@ -1,95 +1,80 @@
-//! Python wrappers for stable public enum contract types.
-
-use crate::errors::input_error;
-use blocus_core::{
-    GameStatus as CoreGameStatus, InputError as CoreInputError, PlayerColor as CorePlayerColor,
-    ScoringMode as CoreScoringMode,
-};
 use pyo3::class::basic::CompareOp;
 use pyo3::prelude::*;
-use pyo3::types::PyModule;
-
-pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
-    module.add_class::<PlayerColor>()?;
-    module.add_class::<GameStatus>()?;
-    module.add_class::<ScoringMode>()?;
-
-    Ok(())
-}
 
 #[pyclass(name = "PlayerColor", frozen, from_py_object)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub struct PlayerColor {
-    inner: CorePlayerColor,
+    inner: blocus_core::PlayerColor,
 }
 
+#[allow(clippy::trivially_copy_pass_by_ref)]
 impl PlayerColor {
-    pub const fn from_core(inner: CorePlayerColor) -> Self {
+    pub const fn from_core(inner: blocus_core::PlayerColor) -> Self {
         Self { inner }
     }
 
-    pub const fn as_core(self) -> CorePlayerColor {
+    pub const fn as_core(&self) -> blocus_core::PlayerColor {
         self.inner
     }
 
-    pub const fn repr(self) -> &'static str {
+    fn parse(value: &str) -> PyResult<blocus_core::PlayerColor> {
+        match value {
+            "blue" | "BLUE" | "Blue" => Ok(blocus_core::PlayerColor::Blue),
+            "yellow" | "YELLOW" | "Yellow" => Ok(blocus_core::PlayerColor::Yellow),
+            "red" | "RED" | "Red" => Ok(blocus_core::PlayerColor::Red),
+            "green" | "GREEN" | "Green" => Ok(blocus_core::PlayerColor::Green),
+            _ => {
+                let _ = value;
+                Err(crate::conversion::invalid_game_config_error())
+            }
+        }
+    }
+
+    pub fn repr(&self) -> &'static str {
         match self.inner {
-            CorePlayerColor::Blue => "PlayerColor.BLUE",
-            CorePlayerColor::Yellow => "PlayerColor.YELLOW",
-            CorePlayerColor::Red => "PlayerColor.RED",
-            CorePlayerColor::Green => "PlayerColor.GREEN",
+            blocus_core::PlayerColor::Blue => "PlayerColor.BLUE",
+            blocus_core::PlayerColor::Yellow => "PlayerColor.YELLOW",
+            blocus_core::PlayerColor::Red => "PlayerColor.RED",
+            blocus_core::PlayerColor::Green => "PlayerColor.GREEN",
         }
     }
 }
 
 #[pymethods]
-#[expect(
-    clippy::trivially_copy_pass_by_ref,
-    reason = "PyO3 pyclass methods must borrow Python-owned objects"
-)]
+#[allow(clippy::trivially_copy_pass_by_ref)]
 impl PlayerColor {
     #[new]
-    fn new(py: Python<'_>, value: &str) -> PyResult<Self> {
-        match value {
-            "blue" => Ok(Self::from_core(CorePlayerColor::Blue)),
-            "yellow" => Ok(Self::from_core(CorePlayerColor::Yellow)),
-            "red" => Ok(Self::from_core(CorePlayerColor::Red)),
-            "green" => Ok(Self::from_core(CorePlayerColor::Green)),
-            _ => Err(input_error(py, CoreInputError::InvalidGameConfig)),
-        }
+    fn new(value: &str) -> PyResult<Self> {
+        Ok(Self::from_core(Self::parse(value)?))
     }
 
-    #[classattr]
-    #[pyo3(name = "BLUE")]
+    #[staticmethod]
     fn blue() -> Self {
-        Self::from_core(CorePlayerColor::Blue)
+        Self::from_core(blocus_core::PlayerColor::Blue)
     }
 
-    #[classattr]
-    #[pyo3(name = "YELLOW")]
+    #[staticmethod]
     fn yellow() -> Self {
-        Self::from_core(CorePlayerColor::Yellow)
+        Self::from_core(blocus_core::PlayerColor::Yellow)
     }
 
-    #[classattr]
-    #[pyo3(name = "RED")]
+    #[staticmethod]
     fn red() -> Self {
-        Self::from_core(CorePlayerColor::Red)
+        Self::from_core(blocus_core::PlayerColor::Red)
     }
 
-    #[classattr]
-    #[pyo3(name = "GREEN")]
+    #[staticmethod]
     fn green() -> Self {
-        Self::from_core(CorePlayerColor::Green)
+        Self::from_core(blocus_core::PlayerColor::Green)
     }
 
     #[getter]
     fn name(&self) -> &'static str {
         match self.inner {
-            CorePlayerColor::Blue => "BLUE",
-            CorePlayerColor::Yellow => "YELLOW",
-            CorePlayerColor::Red => "RED",
-            CorePlayerColor::Green => "GREEN",
+            blocus_core::PlayerColor::Blue => "BLUE",
+            blocus_core::PlayerColor::Yellow => "YELLOW",
+            blocus_core::PlayerColor::Red => "RED",
+            blocus_core::PlayerColor::Green => "GREEN",
         }
     }
 
@@ -113,14 +98,15 @@ impl PlayerColor {
 
     fn __hash__(&self) -> isize {
         match self.inner {
-            CorePlayerColor::Blue => 0,
-            CorePlayerColor::Yellow => 1,
-            CorePlayerColor::Red => 2,
-            CorePlayerColor::Green => 3,
+            blocus_core::PlayerColor::Blue => 0,
+            blocus_core::PlayerColor::Yellow => 1,
+            blocus_core::PlayerColor::Red => 2,
+            blocus_core::PlayerColor::Green => 3,
         }
     }
 
-    fn __richcmp__(&self, other: &Self, op: CompareOp) -> bool {
+    #[allow(clippy::needless_pass_by_value)]
+    fn __richcmp__(&self, other: PyRef<'_, Self>, op: CompareOp) -> bool {
         match op {
             CompareOp::Eq => self.inner == other.inner,
             CompareOp::Ne => self.inner != other.inner,
@@ -132,62 +118,65 @@ impl PlayerColor {
 #[pyclass(name = "GameStatus", frozen, from_py_object)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub struct GameStatus {
-    inner: CoreGameStatus,
+    inner: blocus_core::GameStatus,
 }
 
+#[allow(clippy::trivially_copy_pass_by_ref)]
 impl GameStatus {
-    pub const fn from_core(inner: CoreGameStatus) -> Self {
+    pub const fn from_core(inner: blocus_core::GameStatus) -> Self {
         Self { inner }
     }
 
-    pub const fn as_core(self) -> CoreGameStatus {
+    pub const fn as_core(&self) -> blocus_core::GameStatus {
         self.inner
     }
 
-    const fn name_value_hash(self) -> (&'static str, &'static str, isize) {
-        match self.inner {
-            CoreGameStatus::InProgress => ("IN_PROGRESS", "in_progress", 0),
-            CoreGameStatus::Finished => ("FINISHED", "finished", 1),
-            _ => ("UNKNOWN", "unknown", -1),
+    fn parse(value: &str) -> PyResult<blocus_core::GameStatus> {
+        match value {
+            "in_progress" | "IN_PROGRESS" | "InProgress" => Ok(blocus_core::GameStatus::InProgress),
+            "finished" | "FINISHED" | "Finished" => Ok(blocus_core::GameStatus::Finished),
+            _ => {
+                let _ = value;
+                Err(crate::conversion::invalid_game_config_error())
+            }
         }
     }
 }
 
 #[pymethods]
-#[expect(
-    clippy::trivially_copy_pass_by_ref,
-    reason = "PyO3 pyclass methods must borrow Python-owned objects"
-)]
+#[allow(clippy::trivially_copy_pass_by_ref)]
 impl GameStatus {
     #[new]
-    fn new(py: Python<'_>, value: &str) -> PyResult<Self> {
-        match value {
-            "in_progress" => Ok(Self::from_core(CoreGameStatus::InProgress)),
-            "finished" => Ok(Self::from_core(CoreGameStatus::Finished)),
-            _ => Err(input_error(py, CoreInputError::InvalidGameConfig)),
-        }
+    fn new(value: &str) -> PyResult<Self> {
+        Ok(Self::from_core(Self::parse(value)?))
     }
 
-    #[classattr]
-    #[pyo3(name = "IN_PROGRESS")]
+    #[staticmethod]
     fn in_progress() -> Self {
-        Self::from_core(CoreGameStatus::InProgress)
+        Self::from_core(blocus_core::GameStatus::InProgress)
     }
 
-    #[classattr]
-    #[pyo3(name = "FINISHED")]
+    #[staticmethod]
     fn finished() -> Self {
-        Self::from_core(CoreGameStatus::Finished)
+        Self::from_core(blocus_core::GameStatus::Finished)
     }
 
     #[getter]
     fn name(&self) -> &'static str {
-        self.name_value_hash().0
+        match self.inner {
+            blocus_core::GameStatus::InProgress => "IN_PROGRESS",
+            blocus_core::GameStatus::Finished => "FINISHED",
+            _ => "UNKNOWN",
+        }
     }
 
     #[getter]
     fn value(&self) -> &'static str {
-        self.name_value_hash().1
+        match self.inner {
+            blocus_core::GameStatus::InProgress => "in_progress",
+            blocus_core::GameStatus::Finished => "finished",
+            _ => "unknown",
+        }
     }
 
     fn __str__(&self) -> &'static str {
@@ -199,10 +188,15 @@ impl GameStatus {
     }
 
     fn __hash__(&self) -> isize {
-        self.name_value_hash().2
+        match self.inner {
+            blocus_core::GameStatus::InProgress => 0,
+            blocus_core::GameStatus::Finished => 1,
+            _ => -1,
+        }
     }
 
-    fn __richcmp__(&self, other: &Self, op: CompareOp) -> bool {
+    #[allow(clippy::needless_pass_by_value)]
+    fn __richcmp__(&self, other: PyRef<'_, Self>, op: CompareOp) -> bool {
         match op {
             CompareOp::Eq => self.inner == other.inner,
             CompareOp::Ne => self.inner != other.inner,
@@ -214,62 +208,65 @@ impl GameStatus {
 #[pyclass(name = "ScoringMode", frozen, from_py_object)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub struct ScoringMode {
-    inner: CoreScoringMode,
+    inner: blocus_core::ScoringMode,
 }
 
+#[allow(clippy::trivially_copy_pass_by_ref)]
 impl ScoringMode {
-    pub const fn from_core(inner: CoreScoringMode) -> Self {
+    pub const fn from_core(inner: blocus_core::ScoringMode) -> Self {
         Self { inner }
     }
 
-    pub const fn as_core(self) -> CoreScoringMode {
+    pub const fn as_core(&self) -> blocus_core::ScoringMode {
         self.inner
     }
 
-    const fn name_value_hash(self) -> (&'static str, &'static str, isize) {
-        match self.inner {
-            CoreScoringMode::Basic => ("BASIC", "basic", 0),
-            CoreScoringMode::Advanced => ("ADVANCED", "advanced", 1),
-            _ => ("UNKNOWN", "unknown", -1),
+    fn parse(value: &str) -> PyResult<blocus_core::ScoringMode> {
+        match value {
+            "basic" | "BASIC" | "Basic" => Ok(blocus_core::ScoringMode::Basic),
+            "advanced" | "ADVANCED" | "Advanced" => Ok(blocus_core::ScoringMode::Advanced),
+            _ => {
+                let _ = value;
+                Err(crate::conversion::invalid_game_config_error())
+            }
         }
     }
 }
 
 #[pymethods]
-#[expect(
-    clippy::trivially_copy_pass_by_ref,
-    reason = "PyO3 pyclass methods must borrow Python-owned objects"
-)]
+#[allow(clippy::trivially_copy_pass_by_ref)]
 impl ScoringMode {
     #[new]
-    fn new(py: Python<'_>, value: &str) -> PyResult<Self> {
-        match value {
-            "basic" => Ok(Self::from_core(CoreScoringMode::Basic)),
-            "advanced" => Ok(Self::from_core(CoreScoringMode::Advanced)),
-            _ => Err(input_error(py, CoreInputError::InvalidGameConfig)),
-        }
+    fn new(value: &str) -> PyResult<Self> {
+        Ok(Self::from_core(Self::parse(value)?))
     }
 
-    #[classattr]
-    #[pyo3(name = "BASIC")]
+    #[staticmethod]
     fn basic() -> Self {
-        Self::from_core(CoreScoringMode::Basic)
+        Self::from_core(blocus_core::ScoringMode::Basic)
     }
 
-    #[classattr]
-    #[pyo3(name = "ADVANCED")]
+    #[staticmethod]
     fn advanced() -> Self {
-        Self::from_core(CoreScoringMode::Advanced)
+        Self::from_core(blocus_core::ScoringMode::Advanced)
     }
 
     #[getter]
     fn name(&self) -> &'static str {
-        self.name_value_hash().0
+        match self.inner {
+            blocus_core::ScoringMode::Basic => "BASIC",
+            blocus_core::ScoringMode::Advanced => "ADVANCED",
+            _ => "UNKNOWN",
+        }
     }
 
     #[getter]
     fn value(&self) -> &'static str {
-        self.name_value_hash().1
+        match self.inner {
+            blocus_core::ScoringMode::Basic => "basic",
+            blocus_core::ScoringMode::Advanced => "advanced",
+            _ => "unknown",
+        }
     }
 
     fn __str__(&self) -> &'static str {
@@ -281,10 +278,15 @@ impl ScoringMode {
     }
 
     fn __hash__(&self) -> isize {
-        self.name_value_hash().2
+        match self.inner {
+            blocus_core::ScoringMode::Basic => 0,
+            blocus_core::ScoringMode::Advanced => 1,
+            _ => -1,
+        }
     }
 
-    fn __richcmp__(&self, other: &Self, op: CompareOp) -> bool {
+    #[allow(clippy::needless_pass_by_value)]
+    fn __richcmp__(&self, other: PyRef<'_, Self>, op: CompareOp) -> bool {
         match op {
             CompareOp::Eq => self.inner == other.inner,
             CompareOp::Ne => self.inner != other.inner,

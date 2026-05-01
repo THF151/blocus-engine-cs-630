@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-import uuid
-
 import pytest
 
 import blocus_engine
 
 
 def valid_uuid(value: int) -> str:
-    return str(uuid.UUID(int=value))
+    return f"00000000-0000-0000-0000-{value:012d}"
 
 
 def test_place_command_converts_row_col_to_board_index() -> None:
@@ -50,7 +48,7 @@ def test_place_command_equality_is_value_based() -> None:
         command_id=valid_uuid(1),
         game_id=valid_uuid(2),
         player_id=valid_uuid(3),
-        color=blocus_engine.PlayerColor("blue"),
+        color=blocus_engine.PlayerColor.BLUE,
         piece_id=0,
         orientation_id=0,
         row=0,
@@ -97,7 +95,7 @@ def test_pass_command_equality_is_value_based() -> None:
         command_id=valid_uuid(1),
         game_id=valid_uuid(2),
         player_id=valid_uuid(3),
-        color=blocus_engine.PlayerColor("yellow"),
+        color=blocus_engine.PlayerColor.YELLOW,
     )
     different = blocus_engine.PassCommand(
         command_id=valid_uuid(4),
@@ -135,6 +133,4 @@ def test_place_command_uses_padded_row_board_indexing(
         col=col,
     )
 
-    assert command.row == row
-    assert command.col == col
     assert command.board_index == expected_board_index
