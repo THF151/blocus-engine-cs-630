@@ -255,3 +255,105 @@ fn pass_command_import_is_not_accidentally_needed_for_placement_tests() {
 
     assert_eq!(command.game_id, game_id(10));
 }
+
+#[test]
+fn validate_place_command_accepts_non_first_move_with_diagonal_same_color_contact() {
+    let mut state = state();
+    state
+        .board
+        .place_mask(PlayerColor::Blue, BoardMask::from_index(board_index(0, 0)));
+    state.inventories[PlayerColor::Blue.index()].mark_used(piece_id(0));
+
+    let command = PlaceCommand {
+        command_id: blocus_core::CommandId::from_uuid(uuid(100)),
+        game_id: game_id(10),
+        player_id: player_id(1),
+        color: PlayerColor::Blue,
+        piece_id: piece_id(1),
+        orientation_id: orientation_id(0),
+        anchor: board_index(1, 1),
+    };
+
+    let placement = validate_place_command(&state, command, standard_repository())
+        .unwrap_or_else(|error| panic!("diagonal same-color contact should be legal: {error}"));
+
+    assert!(placement.mask().contains(board_index(1, 1)));
+    assert!(placement.mask().contains(board_index(1, 2)));
+}
+
+#[test]
+fn validate_place_command_rejects_non_first_move_without_same_color_corner_contact() {
+    let mut state = state();
+    state
+        .board
+        .place_mask(PlayerColor::Blue, BoardMask::from_index(board_index(0, 0)));
+    state.inventories[PlayerColor::Blue.index()].mark_used(piece_id(0));
+
+    let command = PlaceCommand {
+        command_id: blocus_core::CommandId::from_uuid(uuid(101)),
+        game_id: game_id(10),
+        player_id: player_id(1),
+        color: PlayerColor::Blue,
+        piece_id: piece_id(1),
+        orientation_id: orientation_id(0),
+        anchor: board_index(3, 3),
+    };
+
+    assert_eq!(
+        validate_place_command(&state, command, standard_repository()),
+        Err(DomainError::from(RuleViolation::MissingCornerContact))
+    );
+}
+
+#[test]
+fn validate_place_command_ignores_different_color_diagonal_contact() {
+    let mut state = state();
+    state.board.place_mask(
+        PlayerColor::Blue,
+        BoardMask::from_index(board_index(10, 10)),
+    );
+    state.inventories[PlayerColor::Blue.index()].mark_used(piece_id(0));
+    state.board.place_mask(
+        PlayerColor::Yellow,
+        BoardMask::from_index(board_index(0, 0)),
+    );
+
+    let command = PlaceCommand {
+        command_id: blocus_core::CommandId::from_uuid(uuid(102)),
+        game_id: game_id(10),
+        player_id: player_id(1),
+        color: PlayerColor::Blue,
+        piece_id: piece_id(1),
+        orientation_id: orientation_id(0),
+        anchor: board_index(1, 1),
+    };
+
+    assert_eq!(
+        validate_place_command(&state, command, standard_repository()),
+        Err(DomainError::from(RuleViolation::MissingCornerContact))
+    );
+}
+
+#[test]
+fn validate_place_command_rejects_same_color_edge_contact() {
+    let mut state = state();
+    state
+        .board
+        .place_mask(PlayerColor::Blue, BoardMask::from_index(board_index(0, 0)));
+    state.inventories[PlayerColor::Blue.index()].mark_used(piece_id(0));
+
+    let command = PlaceCommand {
+        command_id: blocus_core::CommandId::from_uuid(uuid(103)),
+        game_id: game_id(10),
+        player_id: player_id(1),
+        color: PlayerColor::Blue,
+        piece_id: piece_id(1),
+        orientation_id: orientation_id(0),
+        anchor: board_index(0, 1),
+    };
+
+    assert_eq!(
+        validate_place_command(&state, command, standard_repository()),
+        Err(DomainError::from(RuleViolation::IllegalEdgeContact))
+    );
+}

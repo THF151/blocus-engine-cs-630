@@ -22,6 +22,12 @@ pub struct PyPlaceCommand {
     inner: PlaceCommand,
 }
 
+impl PyPlaceCommand {
+    pub const fn as_core(&self) -> PlaceCommand {
+        self.inner
+    }
+}
+
 #[pymethods]
 #[allow(clippy::too_many_arguments)]
 impl PyPlaceCommand {
@@ -139,6 +145,12 @@ impl PyPlaceCommand {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub struct PyPassCommand {
     inner: PassCommand,
+}
+
+impl PyPassCommand {
+    pub const fn as_core(&self) -> PassCommand {
+        self.inner
+    }
 }
 
 #[pymethods]

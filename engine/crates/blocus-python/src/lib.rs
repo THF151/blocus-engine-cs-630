@@ -3,6 +3,7 @@ mod config;
 mod conversion;
 mod engine;
 mod errors;
+mod result;
 mod state;
 mod types;
 
@@ -23,6 +24,7 @@ fn blocus_engine(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<types::ScoringMode>()?;
 
     command::register(module)?;
+    result::register(module)?;
 
     module.add_class::<config::GameMode>()?;
     module.add_class::<config::SharedColorTurn>()?;
