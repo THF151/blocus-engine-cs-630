@@ -1,20 +1,19 @@
 //! Legal move generation.
 //!
-//! The iterator is brute-force in shape but optimized for the per-anchor
-//! hot path: state-level invariants are validated once at construction,
-//! per-orientation bounding boxes constrain the anchor sweep, and contact
-//! rules are evaluated through 640-bit mask shifts rather than per-cell
-//! scans. Iteration order is `(piece_id, orientation_id, row, col)` and
-//! is stable.
+//! The iterator evaluates one `(piece, orientation)` at a time and computes all
+//! legal anchors for that shape with board-mask algebra. Non-opening moves are
+//! constrained to the same-color diagonal frontier up front, avoiding the
+//! previous full-board row/column sweep. Iteration order remains stable:
+//! `(piece_id, orientation_id, anchor bit index)`.
 
-use crate::pieces::PieceRepository;
-use crate::rules::placement::{build_placement_mask, starting_corner_for};
+use crate::pieces::{PieceRepository, ShapeBitmap};
+use crate::rules::placement::starting_corner_for;
 use crate::{
     BOARD_SIZE, BoardIndex, BoardMask, DomainError, GameState, GameStatus, LegalMove,
-    OrientationId, PIECE_COUNT, PieceId, PlayerColor, PlayerId,
+    MAX_SHAPE_EXTENT, OrientationId, PIECE_COUNT, PieceId, PlayerColor, PlayerId,
 };
 
-/// Lazy brute-force legal move iterator.
+/// Lazy legal move iterator.
 ///
 /// The iterator is a snapshot: it copies the state-derived masks and inventory
 /// bitmap at construction time, so it does not borrow the source [`GameState`].
@@ -22,16 +21,16 @@ use crate::{
 pub struct LegalMoveIter {
     repository: &'static PieceRepository,
 
-    own_mask: BoardMask,
-    occupied_mask: BoardMask,
+    target_mask: BoardMask,
+    forbidden_cells: BoardMask,
     available_pieces: u32,
-    is_first_move: bool,
-    starting_corner: BoardIndex,
 
     next_piece_id: u8,
     next_orientation_id: u8,
-    next_row: u8,
-    next_col: u8,
+    current_anchor_mask: BoardMask,
+    current_piece_id: u8,
+    current_orientation_id: u8,
+    current_score_delta: u8,
     exhausted: bool,
 }
 
@@ -56,6 +55,16 @@ impl LegalMoveIter {
 
         let own_mask = state.board.occupied(color);
         let occupied_mask = state.board.occupied_all();
+        let target_mask = if own_mask.is_empty() {
+            BoardMask::from_index(starting_corner_for(color))
+        } else {
+            own_mask.diagonal_frontier()
+        };
+        let forbidden_cells = if own_mask.is_empty() {
+            occupied_mask
+        } else {
+            occupied_mask.union(own_mask.edge_neighbors())
+        };
         let available_pieces = if context_is_valid {
             state.inventories[color.index()].available_mask()
         } else {
@@ -64,15 +73,15 @@ impl LegalMoveIter {
 
         Self {
             repository,
-            own_mask,
-            occupied_mask,
+            target_mask,
+            forbidden_cells,
             available_pieces,
-            is_first_move: own_mask.is_empty(),
-            starting_corner: starting_corner_for(color),
             next_piece_id: 0,
             next_orientation_id: 0,
-            next_row: 0,
-            next_col: 0,
+            current_anchor_mask: BoardMask::EMPTY,
+            current_piece_id: 0,
+            current_orientation_id: 0,
+            current_score_delta: 0,
             exhausted: !context_is_valid,
         }
     }
@@ -81,32 +90,63 @@ impl LegalMoveIter {
     fn advance_piece(&mut self) {
         self.next_piece_id = self.next_piece_id.saturating_add(1);
         self.next_orientation_id = 0;
-        self.next_row = 0;
-        self.next_col = 0;
     }
 
     #[inline]
-    fn advance_orientation(&mut self) {
+    fn advance_orientation_cursor(&mut self) {
         self.next_orientation_id = self.next_orientation_id.saturating_add(1);
-        self.next_row = 0;
-        self.next_col = 0;
     }
 
-    #[inline]
-    fn placement_is_legal(&self, placement: BoardMask) -> bool {
-        if placement.intersects(self.occupied_mask) {
-            return false;
+    fn load_next_anchor_mask(&mut self) -> bool {
+        while !self.exhausted {
+            if self.next_piece_id >= PIECE_COUNT {
+                self.exhausted = true;
+                return false;
+            }
+
+            if self.available_pieces & (1u32 << self.next_piece_id) == 0 {
+                self.advance_piece();
+                continue;
+            }
+
+            let Ok(piece_id) = PieceId::try_new(self.next_piece_id) else {
+                self.exhausted = true;
+                return false;
+            };
+
+            let piece = self.repository.piece(piece_id);
+
+            if self.next_orientation_id >= piece.orientation_count() {
+                self.advance_piece();
+                continue;
+            }
+
+            let Ok(orientation_id) = OrientationId::try_new(self.next_orientation_id) else {
+                self.exhausted = true;
+                return false;
+            };
+
+            self.advance_orientation_cursor();
+
+            let Some(orientation) = piece.orientation(orientation_id) else {
+                continue;
+            };
+
+            let shape = orientation.shape();
+            let anchor_mask = legal_anchor_mask(shape, self.target_mask, self.forbidden_cells);
+
+            if anchor_mask.is_empty() {
+                continue;
+            }
+
+            self.current_piece_id = piece_id.as_u8();
+            self.current_orientation_id = orientation_id.as_u8();
+            self.current_score_delta = shape.square_count();
+            self.current_anchor_mask = anchor_mask;
+            return true;
         }
 
-        if self.is_first_move {
-            return placement.contains(self.starting_corner);
-        }
-
-        if has_edge_contact(placement, self.own_mask) {
-            return false;
-        }
-
-        has_corner_contact(placement, self.own_mask)
+        false
     }
 }
 
@@ -119,100 +159,79 @@ impl Iterator for LegalMoveIter {
         }
 
         loop {
-            if self.next_piece_id >= PIECE_COUNT {
-                self.exhausted = true;
+            if let Some(anchor) = self.current_anchor_mask.pop_lowest_index() {
+                let piece_id = PieceId::try_new(self.current_piece_id)
+                    .unwrap_or_else(|_| unreachable!("current piece id is valid"));
+                let orientation_id = OrientationId::try_new(self.current_orientation_id)
+                    .unwrap_or_else(|_| unreachable!("current orientation id is valid"));
+
+                return Some(LegalMove {
+                    piece_id,
+                    orientation_id,
+                    anchor,
+                    score_delta: self.current_score_delta,
+                });
+            }
+
+            if !self.load_next_anchor_mask() {
                 return None;
             }
-
-            if self.available_pieces & (1u32 << self.next_piece_id) == 0 {
-                self.advance_piece();
-                continue;
-            }
-
-            let Ok(piece_id) = PieceId::try_new(self.next_piece_id) else {
-                self.exhausted = true;
-                return None;
-            };
-
-            let piece = self.repository.piece(piece_id);
-
-            if self.next_orientation_id >= piece.orientation_count() {
-                self.advance_piece();
-                continue;
-            }
-
-            let Ok(orientation_id) = OrientationId::try_new(self.next_orientation_id) else {
-                self.exhausted = true;
-                return None;
-            };
-
-            let Some(orientation) = piece.orientation(orientation_id) else {
-                self.advance_orientation();
-                continue;
-            };
-
-            let shape = orientation.shape();
-
-            let max_anchor_row = (BOARD_SIZE + 1).saturating_sub(shape.height());
-            let max_anchor_col = (BOARD_SIZE + 1).saturating_sub(shape.width());
-
-            if self.next_row >= max_anchor_row {
-                self.advance_orientation();
-                continue;
-            }
-
-            if self.next_col >= max_anchor_col {
-                self.next_col = 0;
-                self.next_row = self.next_row.saturating_add(1);
-                continue;
-            }
-
-            let row = self.next_row;
-            let col = self.next_col;
-            self.next_col = self.next_col.saturating_add(1);
-
-            let Ok(anchor) = BoardIndex::from_row_col(row, col) else {
-                continue;
-            };
-
-            let Some(placement_mask) = build_placement_mask(shape, anchor) else {
-                continue;
-            };
-
-            if !self.placement_is_legal(placement_mask) {
-                continue;
-            }
-
-            return Some(LegalMove {
-                piece_id,
-                orientation_id,
-                anchor,
-                score_delta: shape.square_count(),
-            });
         }
     }
 }
 
-#[inline]
-fn has_edge_contact(placement: BoardMask, own: BoardMask) -> bool {
-    placement.shift_north().intersects(own)
-        || placement.shift_south().intersects(own)
-        || placement.shift_east().intersects(own)
-        || placement.shift_west().intersects(own)
+fn legal_anchor_mask(
+    shape: ShapeBitmap,
+    required_cells: BoardMask,
+    forbidden_cells: BoardMask,
+) -> BoardMask {
+    let mut required_anchors = BoardMask::EMPTY;
+    let mut forbidden_anchors = BoardMask::EMPTY;
+    let mut remaining = shape.cell_mask();
+
+    while remaining != 0 {
+        let bit = u8::try_from(remaining.trailing_zeros())
+            .unwrap_or_else(|_| unreachable!("shape cell mask uses only 25 bits"));
+        let local_row = bit / MAX_SHAPE_EXTENT;
+        let local_col = bit % MAX_SHAPE_EXTENT;
+        let row_delta = -i8::try_from(local_row)
+            .unwrap_or_else(|_| unreachable!("shape row offset fits in i8"));
+        let col_delta = -i8::try_from(local_col)
+            .unwrap_or_else(|_| unreachable!("shape column offset fits in i8"));
+
+        required_anchors = required_anchors.union(required_cells.shift_by(row_delta, col_delta));
+        forbidden_anchors = forbidden_anchors.union(forbidden_cells.shift_by(row_delta, col_delta));
+        remaining &= remaining - 1;
+    }
+
+    valid_anchor_mask(shape)
+        .intersection(required_anchors)
+        .difference(forbidden_anchors)
 }
 
-#[inline]
-fn has_corner_contact(placement: BoardMask, own: BoardMask) -> bool {
-    let north = placement.shift_north();
-    let south = placement.shift_south();
+fn valid_anchor_mask(shape: ShapeBitmap) -> BoardMask {
+    let row_limit = BOARD_SIZE + 1 - shape.height();
+    let col_limit = BOARD_SIZE + 1 - shape.width();
+    let mut mask = BoardMask::EMPTY;
+    let mut row = 0u8;
 
-    north.shift_east().intersects(own)
-        || north.shift_west().intersects(own)
-        || south.shift_east().intersects(own)
-        || south.shift_west().intersects(own)
+    while row < row_limit {
+        let mut col = 0u8;
+
+        while col < col_limit {
+            let index = BoardIndex::from_row_col(row, col)
+                .unwrap_or_else(|_| unreachable!("anchor bounds are playable"));
+            mask.insert(index);
+            col += 1;
+        }
+
+        row += 1;
+    }
+
+    mask
 }
 
-/// Creates a brute-force legal move iterator.
+/// Creates a legal move iterator.
 ///
 /// # Errors
 ///

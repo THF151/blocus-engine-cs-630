@@ -88,6 +88,7 @@ fn no_move_blue_state() -> blocus_core::GameState {
             .union(BoardMask::from_index(index(1, 0)))
             .union(BoardMask::from_index(index(1, 1))),
     );
+    state.hash = blocus_core::compute_hash_full(&state);
 
     state
 }
@@ -201,6 +202,7 @@ fn pass_finishes_game_when_no_unpassed_color_has_any_legal_move() {
         .marked_passed(PlayerColor::Yellow)
         .marked_passed(PlayerColor::Red)
         .marked_passed(PlayerColor::Green);
+    state.hash = blocus_core::compute_hash_full(&state);
 
     let command = pass_command(PlayerColor::Blue, player_id(1));
     let result = engine
@@ -236,6 +238,7 @@ fn place_can_finish_game_when_no_unpassed_color_can_move_after_transition() {
     for raw_piece_id in 1..blocus_core::PIECE_COUNT {
         state.inventories[PlayerColor::Blue.index()].mark_used(piece_id(raw_piece_id));
     }
+    state.hash = blocus_core::compute_hash_full(&state);
 
     assert_eq!(
         engine.has_any_valid_move(&state, player_id(1), PlayerColor::Blue),

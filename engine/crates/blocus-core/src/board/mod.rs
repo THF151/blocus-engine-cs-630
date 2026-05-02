@@ -4,6 +4,7 @@ mod constants;
 mod index;
 mod mask;
 mod state;
+mod symmetry;
 
 pub use constants::{
     BOARD_BITS, BOARD_LANES, BOARD_SIZE, PLAYABLE_CELLS, ROW_PADDING_BITS, ROW_STRIDE,
@@ -11,3 +12,4 @@ pub use constants::{
 pub use index::BoardIndex;
 pub use mask::{BoardMask, PLAYABLE_MASK};
 pub use state::BoardState;
+pub use symmetry::BoardSymmetry;

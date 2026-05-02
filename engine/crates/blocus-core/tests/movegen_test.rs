@@ -1,7 +1,8 @@
 use blocus_core::{
-    BlocusEngine, BoardIndex, Command, CommandId, GameConfig, GameId, GameMode, LegalMove,
-    OrientationId, PieceId, PlaceCommand, PlayerColor, PlayerId, PlayerSlots, ScoringMode,
-    StateVersion, TurnOrder,
+    BOARD_SIZE, BlocusEngine, BoardIndex, Command, CommandId, GameConfig, GameId, GameMode,
+    GameState, LegalMove, OrientationId, PIECE_COUNT, PieceId, PlaceCommand, PlayerColor, PlayerId,
+    PlayerSlots, ScoringMode, StateVersion, TurnOrder, build_placement, standard_repository,
+    validate_place_command,
 };
 use std::collections::HashSet;
 use uuid::Uuid;
@@ -80,6 +81,107 @@ fn assert_sorted_by_piece_orientation_anchor(moves: &[LegalMove]) {
             "moves should be strictly sorted and duplicate-free: left={left_key:?}, right={right_key:?}"
         );
     }
+}
+
+fn brute_force_moves(state: &GameState, player_id: PlayerId, color: PlayerColor) -> Vec<LegalMove> {
+    let repository = standard_repository();
+    let mut moves = Vec::new();
+
+    for raw_piece_id in 0..PIECE_COUNT {
+        let piece_id = piece_id(raw_piece_id);
+
+        if state.inventories[color.index()].is_used(piece_id) {
+            continue;
+        }
+
+        let piece = repository.piece(piece_id);
+
+        for raw_orientation_id in 0..piece.orientation_count() {
+            let orientation_id = orientation_id(raw_orientation_id);
+
+            for row in 0..BOARD_SIZE {
+                for col in 0..BOARD_SIZE {
+                    let command = PlaceCommand {
+                        command_id: command_id(9_999),
+                        game_id: state.game_id,
+                        player_id,
+                        color,
+                        piece_id,
+                        orientation_id,
+                        anchor: index(row, col),
+                    };
+
+                    if let Ok(placement) = validate_place_command(state, command, repository) {
+                        moves.push(LegalMove {
+                            piece_id,
+                            orientation_id,
+                            anchor: placement.anchor(),
+                            score_delta: placement.square_count(),
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    moves
+}
+
+fn state_after_four_opening_moves(engine: BlocusEngine) -> GameState {
+    let state = engine.initialize_game(two_player_config());
+    let state = engine
+        .apply(
+            &state,
+            Command::Place(opening_place_command(
+                PlayerColor::Blue,
+                player_id(1),
+                piece_id(0),
+                orientation_id(0),
+                index(0, 0),
+            )),
+        )
+        .unwrap_or_else(|error| panic!("blue opening move should apply: {error}"))
+        .next_state;
+    let state = engine
+        .apply(
+            &state,
+            Command::Place(opening_place_command(
+                PlayerColor::Yellow,
+                player_id(2),
+                piece_id(0),
+                orientation_id(0),
+                index(0, 19),
+            )),
+        )
+        .unwrap_or_else(|error| panic!("yellow opening move should apply: {error}"))
+        .next_state;
+    let state = engine
+        .apply(
+            &state,
+            Command::Place(opening_place_command(
+                PlayerColor::Red,
+                player_id(1),
+                piece_id(0),
+                orientation_id(0),
+                index(19, 19),
+            )),
+        )
+        .unwrap_or_else(|error| panic!("red opening move should apply: {error}"))
+        .next_state;
+
+    engine
+        .apply(
+            &state,
+            Command::Place(opening_place_command(
+                PlayerColor::Green,
+                player_id(2),
+                piece_id(0),
+                orientation_id(0),
+                index(19, 0),
+            )),
+        )
+        .unwrap_or_else(|error| panic!("green opening move should apply: {error}"))
+        .next_state
 }
 
 #[test]
@@ -231,6 +333,63 @@ fn get_valid_moves_collects_the_same_moves_as_the_iterator() {
 
     assert_eq!(from_wrapper, from_iterator);
     assert!(!from_wrapper.is_empty());
+}
+
+#[test]
+fn optimized_move_generation_matches_brute_force_for_opening() {
+    let engine = BlocusEngine::new();
+    let state = engine.initialize_game(two_player_config());
+
+    let optimized = engine
+        .get_valid_moves(&state, player_id(1), PlayerColor::Blue)
+        .unwrap_or_else(|error| panic!("optimized move generation should succeed: {error}"));
+    let brute_force = brute_force_moves(&state, player_id(1), PlayerColor::Blue);
+
+    assert_eq!(optimized, brute_force);
+    assert_sorted_by_piece_orientation_anchor(&optimized);
+}
+
+#[test]
+fn optimized_move_generation_matches_brute_force_after_frontier_exists() {
+    let engine = BlocusEngine::new();
+    let state = state_after_four_opening_moves(engine);
+
+    let optimized = engine
+        .get_valid_moves(&state, player_id(1), PlayerColor::Blue)
+        .unwrap_or_else(|error| panic!("optimized move generation should succeed: {error}"));
+    let brute_force = brute_force_moves(&state, player_id(1), PlayerColor::Blue);
+
+    assert_eq!(optimized, brute_force);
+    assert_sorted_by_piece_orientation_anchor(&optimized);
+}
+
+#[test]
+fn generated_frontier_moves_do_not_overlap_or_touch_edges() {
+    let engine = BlocusEngine::new();
+    let state = state_after_four_opening_moves(engine);
+    let own = state.board.occupied(PlayerColor::Blue);
+    let occupied = state.board.occupied_all();
+    let frontier = own.diagonal_frontier();
+    let edge_forbidden = own.edge_neighbors();
+
+    let moves = engine
+        .get_valid_moves(&state, player_id(1), PlayerColor::Blue)
+        .unwrap_or_else(|error| panic!("move generation should succeed: {error}"));
+
+    assert!(!moves.is_empty());
+
+    for legal_move in moves {
+        let piece = standard_repository().piece(legal_move.piece_id);
+        let orientation = piece
+            .orientation(legal_move.orientation_id)
+            .unwrap_or_else(|| panic!("generated orientation should exist"));
+        let placement = build_placement(legal_move.piece_id, orientation, legal_move.anchor)
+            .unwrap_or_else(|error| panic!("generated placement should fit: {error}"));
+
+        assert!(placement.mask().intersects(frontier));
+        assert!(!placement.mask().intersects(occupied));
+        assert!(!placement.mask().intersects(edge_forbidden));
+    }
 }
 
 #[test]
