@@ -4,31 +4,38 @@
 //! move generation, scoring, and hashing are delegated to focused modules as
 //! they become available.
 
-use crate::pieces::PieceInventory;
+use crate::pieces::{PieceInventory, PieceRepository, standard_repository};
 use crate::{
     BoardState, Command, DomainError, EngineError, GameConfig, GameResult, GameState, GameStatus,
     LegalMove, PLAYER_COLOR_COUNT, PlayerColor, PlayerId, ScoringMode, StateSchemaVersion,
     StateVersion, ZobristHash,
 };
 
-/// Pure Rust Blocus engine facade.
+/// Pure Rust Blokus engine facade.
 ///
-/// The facade is intentionally small. It owns no game state and has no
-/// dependency on Python, storage, networking, or AI crates.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash)]
-pub struct BlocusEngine;
+/// The facade owns no game state. It only holds a shared immutable reference to
+/// the official precomputed piece repository.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+pub struct BlocusEngine {
+    pieces: &'static PieceRepository,
+}
 
 impl BlocusEngine {
-    /// Creates a new stateless engine facade.
+    /// Creates a new stateless engine facade backed by the shared repository.
     #[must_use]
-    pub const fn new() -> Self {
-        Self
+    pub fn new() -> Self {
+        Self {
+            pieces: standard_repository(),
+        }
+    }
+
+    /// Returns the immutable official piece repository used by this engine.
+    #[must_use]
+    pub const fn piece_repository(self) -> &'static PieceRepository {
+        self.pieces
     }
 
     /// Initializes a new game from a validated configuration.
-    ///
-    /// `GameConfig` is already a validated value object in the current model,
-    /// so initialization only assembles the first immutable state snapshot.
     #[must_use]
     pub fn initialize_game(&self, config: GameConfig) -> GameState {
         GameState {
@@ -49,23 +56,15 @@ impl BlocusEngine {
 
     /// Applies a command to a game state.
     ///
-    /// This method is intentionally present in the public contract now, but
-    /// real command application is implemented after pieces and rule validation
-    /// exist.
-    ///
     /// # Errors
     ///
-    /// Currently returns [`EngineError::InvariantViolation`] because command
+    /// Currently returns [`EngineError::InvariantViolation`] because full command
     /// application has not been implemented yet.
     pub fn apply(&self, _state: &GameState, _command: Command) -> Result<GameResult, DomainError> {
         Err(EngineError::InvariantViolation.into())
     }
 
     /// Returns an iterator over valid moves.
-    ///
-    /// This contract method exists before move generation is implemented. The
-    /// concrete iterator type will be introduced with the move-generation
-    /// module.
     ///
     /// # Errors
     ///
@@ -125,10 +124,13 @@ impl BlocusEngine {
     }
 }
 
+impl Default for BlocusEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Returns true when the native engine crate is linked and callable.
-///
-/// This remains useful as a deployment/linkage smoke check even after gameplay
-/// APIs exist.
 #[must_use]
 pub const fn engine_health() -> bool {
     true

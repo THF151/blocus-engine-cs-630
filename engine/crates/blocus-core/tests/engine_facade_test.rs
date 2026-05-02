@@ -162,7 +162,7 @@ fn engine_facade_is_stateless_copy_debug_default_and_comparable() {
     let copied = engine;
 
     assert_eq!(engine, copied);
-    assert_eq!(engine, BlocusEngine);
+    assert_eq!(engine, BlocusEngine::new());
     assert!(format!("{engine:?}").contains("BlocusEngine"));
 }
 

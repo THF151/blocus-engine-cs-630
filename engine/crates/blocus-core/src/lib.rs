@@ -33,4 +33,9 @@ pub use ids::{
     CommandId, GameId, MAX_ORIENTATION_COUNT, OrientationId, PIECE_COUNT, PieceId, PlayerId,
     SmallIdError, StateVersion, ZobristHash,
 };
-pub use pieces::{ALL_PIECES_MASK, PieceInventory};
+pub use pieces::{
+    ALL_PIECES_MASK, CanonicalPiece, Flip, MAX_SHAPE_CELLS, MAX_SHAPE_EXTENT,
+    MAX_UNIQUE_ORIENTATIONS, PieceInventory, PieceOrientation, PieceRepository, Rotation,
+    ShapeBitmap, standard_piece, standard_pieces, standard_repository,
+};
+pub use rules::{Placement, build_placement, validate_place_command};
