@@ -89,7 +89,7 @@ def test_invalid_row_col_raises_structured_input_error() -> None:
     assert_structured_input_error(captured.value, "InvalidBoardIndex")
 
 
-def test_unimplemented_engine_methods_raise_structured_engine_error() -> None:
+def test_has_any_valid_move_returns_boolean_for_implemented_movegen() -> None:
     engine = blocus_engine.BlocusEngine()
     config = blocus_engine.GameConfig.two_player(
         valid_uuid(100),
@@ -99,9 +99,14 @@ def test_unimplemented_engine_methods_raise_structured_engine_error() -> None:
     )
     state = engine.initialize_game(config)
 
-    with pytest.raises(blocus_engine.EngineError) as captured:
-        engine.has_any_valid_move(state, valid_uuid(1), blocus_engine.PlayerColor.BLUE)
+    assert engine.has_any_valid_move(
+        state,
+        valid_uuid(1),
+        blocus_engine.PlayerColor.BLUE,
+    ) is True
 
-    text = str(captured.value)
-    assert "engine_error" in text
-    assert "InvariantViolation" in text
+    assert engine.has_any_valid_move(
+        state,
+        valid_uuid(2),
+        blocus_engine.PlayerColor.YELLOW,
+    ) is False

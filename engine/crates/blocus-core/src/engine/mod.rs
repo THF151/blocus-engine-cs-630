@@ -74,53 +74,50 @@ impl BlocusEngine {
         }
     }
 
-    /// Returns an iterator over valid moves.
+    /// Returns a lazy iterator over valid moves.
     ///
-    /// This contract method exists before move generation is implemented. The
-    /// concrete iterator type will be introduced with the move-generation
-    /// module.
+    /// The iterator is a snapshot: it copies the state-derived data it needs at
+    /// construction time, so it does not borrow `state`.
     ///
     /// # Errors
     ///
-    /// Currently returns [`EngineError::InvariantViolation`] because legal move
-    /// generation has not been implemented yet.
+    /// Reserved for future corrupted-state validation. Invalid gameplay query
+    /// contexts currently produce an exhausted iterator.
     pub fn valid_moves_iter(
         &self,
-        _state: &GameState,
-        _player: PlayerId,
-        _color: PlayerColor,
-    ) -> Result<core::iter::Empty<LegalMove>, DomainError> {
-        Err(EngineError::InvariantViolation.into())
+        state: &GameState,
+        player: PlayerId,
+        color: PlayerColor,
+    ) -> Result<crate::movegen::LegalMoveIter, DomainError> {
+        crate::movegen::legal_moves_iter(state, self.piece_repository(), player, color)
     }
 
     /// Materializes all valid moves for a player/color.
     ///
     /// # Errors
     ///
-    /// Currently returns [`EngineError::InvariantViolation`] because legal move
-    /// generation has not been implemented yet.
+    /// Propagates move-iterator construction errors.
     pub fn get_valid_moves(
         &self,
-        _state: &GameState,
-        _player: PlayerId,
-        _color: PlayerColor,
+        state: &GameState,
+        player: PlayerId,
+        color: PlayerColor,
     ) -> Result<Vec<LegalMove>, DomainError> {
-        Err(EngineError::InvariantViolation.into())
+        crate::movegen::get_valid_moves(state, self.piece_repository(), player, color)
     }
 
     /// Returns whether a player/color has any valid move.
     ///
     /// # Errors
     ///
-    /// Currently returns [`EngineError::InvariantViolation`] because legal move
-    /// generation has not been implemented yet.
+    /// Propagates move-iterator construction errors.
     pub fn has_any_valid_move(
         &self,
-        _state: &GameState,
-        _player: PlayerId,
-        _color: PlayerColor,
+        state: &GameState,
+        player: PlayerId,
+        color: PlayerColor,
     ) -> Result<bool, DomainError> {
-        Err(EngineError::InvariantViolation.into())
+        crate::movegen::has_any_valid_move(state, self.piece_repository(), player, color)
     }
 
     /// Scores a finished game.

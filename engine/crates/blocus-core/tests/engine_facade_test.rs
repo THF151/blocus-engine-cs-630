@@ -145,7 +145,6 @@ fn assert_initial_state_matches_config(config: GameConfig) {
 
     for inventory in state.inventories {
         assert_eq!(inventory.used_count(), 0);
-        assert_eq!(inventory.used_count(), 0);
         assert!(inventory.is_available(piece_id(0)));
         assert!(inventory.is_available(piece_id(20)));
     }
@@ -189,7 +188,7 @@ fn initialize_game_builds_empty_four_player_state_with_custom_turn_order() {
 }
 
 #[test]
-fn apply_returns_controlled_placeholder_error_until_rules_exist() {
+fn apply_pass_returns_controlled_placeholder_error_until_pass_rules_exist() {
     let engine = BlocusEngine::new();
     let state = engine.initialize_game(two_player_config());
 
@@ -207,35 +206,77 @@ fn apply_returns_controlled_placeholder_error_until_rules_exist() {
 }
 
 #[test]
-fn valid_moves_iter_returns_controlled_placeholder_error_until_movegen_exists() {
+fn valid_moves_iter_returns_real_legal_moves() {
     let engine = BlocusEngine::new();
     let state = engine.initialize_game(two_player_config());
 
-    assert!(matches!(
-        engine.valid_moves_iter(&state, player(1), PlayerColor::Blue),
-        Err(error) if error == DomainError::from(EngineError::InvariantViolation)
-    ));
+    let moves = engine
+        .valid_moves_iter(&state, player(1), PlayerColor::Blue)
+        .unwrap_or_else(|error| panic!("valid move iterator should construct: {error}"))
+        .take(1)
+        .collect::<Vec<_>>();
+
+    assert_eq!(moves.len(), 1);
+    assert_eq!(moves[0].piece_id, piece_id(0));
+    assert_eq!(moves[0].score_delta, 1);
 }
 
 #[test]
-fn get_valid_moves_returns_controlled_placeholder_error_until_movegen_exists() {
+fn valid_moves_iter_returns_no_moves_for_wrong_turn() {
     let engine = BlocusEngine::new();
     let state = engine.initialize_game(two_player_config());
 
-    assert_eq!(
-        engine.get_valid_moves(&state, player(1), PlayerColor::Blue),
-        Err(DomainError::from(EngineError::InvariantViolation))
-    );
+    let moves = engine
+        .valid_moves_iter(&state, player(2), PlayerColor::Yellow)
+        .unwrap_or_else(|error| panic!("valid move iterator should construct: {error}"))
+        .collect::<Vec<_>>();
+
+    assert!(moves.is_empty());
 }
 
 #[test]
-fn has_any_valid_move_returns_controlled_placeholder_error_until_movegen_exists() {
+fn get_valid_moves_returns_real_legal_moves() {
+    let engine = BlocusEngine::new();
+    let state = engine.initialize_game(two_player_config());
+
+    let moves = engine
+        .get_valid_moves(&state, player(1), PlayerColor::Blue)
+        .unwrap_or_else(|error| panic!("get_valid_moves should succeed: {error}"));
+
+    assert!(!moves.is_empty());
+    assert_eq!(moves[0].piece_id, piece_id(0));
+    assert_eq!(moves[0].score_delta, 1);
+}
+
+#[test]
+fn get_valid_moves_matches_iterator_collection() {
+    let engine = BlocusEngine::new();
+    let state = engine.initialize_game(two_player_config());
+
+    let from_iterator = engine
+        .valid_moves_iter(&state, player(1), PlayerColor::Blue)
+        .unwrap_or_else(|error| panic!("valid move iterator should construct: {error}"))
+        .collect::<Vec<_>>();
+
+    let from_wrapper = engine
+        .get_valid_moves(&state, player(1), PlayerColor::Blue)
+        .unwrap_or_else(|error| panic!("get_valid_moves should succeed: {error}"));
+
+    assert_eq!(from_wrapper, from_iterator);
+}
+
+#[test]
+fn has_any_valid_move_returns_real_boolean() {
     let engine = BlocusEngine::new();
     let state = engine.initialize_game(two_player_config());
 
     assert_eq!(
         engine.has_any_valid_move(&state, player(1), PlayerColor::Blue),
-        Err(DomainError::from(EngineError::InvariantViolation))
+        Ok(true)
+    );
+    assert_eq!(
+        engine.has_any_valid_move(&state, player(2), PlayerColor::Yellow),
+        Ok(false)
     );
 }
 
@@ -251,7 +292,7 @@ fn score_game_returns_controlled_placeholder_error_until_scoring_exists() {
 }
 
 #[test]
-fn placeholder_methods_do_not_return_fake_gameplay_success() {
+fn only_unimplemented_methods_return_placeholder_errors() {
     let engine = BlocusEngine::new();
     let state = engine.initialize_game(two_player_config());
 
@@ -266,17 +307,16 @@ fn placeholder_methods_do_not_return_fake_gameplay_success() {
     assert!(
         engine
             .valid_moves_iter(&state, player(1), PlayerColor::Blue)
-            .is_err()
+            .is_ok()
     );
     assert!(
         engine
             .get_valid_moves(&state, player(1), PlayerColor::Blue)
-            .is_err()
+            .is_ok()
     );
-    assert!(
-        engine
-            .has_any_valid_move(&state, player(1), PlayerColor::Blue)
-            .is_err()
+    assert_eq!(
+        engine.has_any_valid_move(&state, player(1), PlayerColor::Blue),
+        Ok(true)
     );
     assert!(engine.score_game(&state, ScoringMode::Advanced).is_err());
 }
@@ -305,7 +345,6 @@ fn initialized_state_has_no_piece_usage_or_board_occupancy() {
     }
 
     for inventory in state.inventories {
-        assert_eq!(inventory.used_count(), 0);
         assert_eq!(inventory.used_count(), 0);
     }
 }

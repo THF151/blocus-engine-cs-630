@@ -6,6 +6,16 @@ use crate::{BOARD_SIZE, ROW_STRIDE};
 /// Mask containing the 20 playable cells of one padded 32-bit row.
 pub const ROW_PLAYABLE_MASK: u128 = (1u128 << BOARD_SIZE) - 1;
 
+/// Mask containing the cells in one padded row that have a valid east neighbor.
+///
+/// Columns `0..=18` may move east. Column `19` must be dropped.
+const ROW_EAST_SHIFT_SOURCE_MASK: u128 = (1u128 << (BOARD_SIZE - 1)) - 1;
+
+/// Mask containing the cells in one padded row that have a valid west neighbor.
+///
+/// Columns `1..=19` may move west. Column `0` must be dropped.
+const ROW_WEST_SHIFT_SOURCE_MASK: u128 = ROW_PLAYABLE_MASK & !1u128;
+
 /// Mask containing four playable padded rows inside one `u128` lane.
 ///
 /// Each lane contains four 32-bit rows:
@@ -21,10 +31,37 @@ pub const LANE_PLAYABLE_MASK: u128 = ROW_PLAYABLE_MASK
     | (ROW_PLAYABLE_MASK << (ROW_STRIDE * 2))
     | (ROW_PLAYABLE_MASK << (ROW_STRIDE * 3));
 
+/// Mask containing valid east-shift source cells for four padded rows inside
+/// one `u128` lane.
+const LANE_EAST_SHIFT_SOURCE_MASK: u128 = ROW_EAST_SHIFT_SOURCE_MASK
+    | (ROW_EAST_SHIFT_SOURCE_MASK << ROW_STRIDE)
+    | (ROW_EAST_SHIFT_SOURCE_MASK << (ROW_STRIDE * 2))
+    | (ROW_EAST_SHIFT_SOURCE_MASK << (ROW_STRIDE * 3));
+
+/// Mask containing valid west-shift source cells for four padded rows inside
+/// one `u128` lane.
+const LANE_WEST_SHIFT_SOURCE_MASK: u128 = ROW_WEST_SHIFT_SOURCE_MASK
+    | (ROW_WEST_SHIFT_SOURCE_MASK << ROW_STRIDE)
+    | (ROW_WEST_SHIFT_SOURCE_MASK << (ROW_STRIDE * 2))
+    | (ROW_WEST_SHIFT_SOURCE_MASK << (ROW_STRIDE * 3));
+
 /// Mask containing every playable board cell and no row-padding bits.
 pub const PLAYABLE_MASK: BoardMask = BoardMask {
     lanes: [LANE_PLAYABLE_MASK; BOARD_LANES],
 };
+
+/// Mask containing every playable cell that has a valid east neighbor.
+const EAST_SHIFT_SOURCE_MASK: BoardMask = BoardMask {
+    lanes: [LANE_EAST_SHIFT_SOURCE_MASK; BOARD_LANES],
+};
+
+/// Mask containing every playable cell that has a valid west neighbor.
+const WEST_SHIFT_SOURCE_MASK: BoardMask = BoardMask {
+    lanes: [LANE_WEST_SHIFT_SOURCE_MASK; BOARD_LANES],
+};
+
+const ROW_SHIFT_BITS: u32 = ROW_STRIDE as u32;
+const ROW_SHIFT_COMPLEMENT: u32 = u128::BITS - ROW_SHIFT_BITS;
 
 /// Fixed-size 640-bit board mask.
 ///
@@ -110,6 +147,20 @@ impl BoardMask {
         Self { lanes }
     }
 
+    /// Returns the intersection of this mask and another mask.
+    #[must_use]
+    pub const fn intersection(self, other: Self) -> Self {
+        let mut lanes = [0; BOARD_LANES];
+        let mut lane = 0;
+
+        while lane < BOARD_LANES {
+            lanes[lane] = self.lanes[lane] & other.lanes[lane];
+            lane += 1;
+        }
+
+        Self { lanes }
+    }
+
     /// Returns the cells in this mask that are not in another mask.
     #[must_use]
     pub const fn difference(self, other: Self) -> Self {
@@ -174,5 +225,83 @@ impl BoardMask {
     #[must_use]
     pub const fn is_playable_subset(self) -> bool {
         self.is_subset_of(PLAYABLE_MASK)
+    }
+
+    /// Returns this mask shifted one row toward lower row indices.
+    ///
+    /// Bits in row 0 are dropped. This is a semantic board shift, not an
+    /// unchecked raw integer shift.
+    #[must_use]
+    pub const fn shift_north(self) -> Self {
+        let mut lanes = [0u128; BOARD_LANES];
+        let mut lane = 0;
+
+        while lane < BOARD_LANES {
+            lanes[lane] = self.lanes[lane] >> ROW_SHIFT_BITS;
+
+            if lane + 1 < BOARD_LANES {
+                lanes[lane] |= self.lanes[lane + 1] << ROW_SHIFT_COMPLEMENT;
+            }
+
+            lane += 1;
+        }
+
+        Self { lanes }.intersection(PLAYABLE_MASK)
+    }
+
+    /// Returns this mask shifted one row toward higher row indices.
+    ///
+    /// Bits in row 19 are dropped. This is a semantic board shift, not an
+    /// unchecked raw integer shift.
+    #[must_use]
+    pub const fn shift_south(self) -> Self {
+        let mut lanes = [0u128; BOARD_LANES];
+        let mut lane = BOARD_LANES;
+
+        while lane > 0 {
+            lane -= 1;
+            lanes[lane] = self.lanes[lane] << ROW_SHIFT_BITS;
+
+            if lane > 0 {
+                lanes[lane] |= self.lanes[lane - 1] >> ROW_SHIFT_COMPLEMENT;
+            }
+        }
+
+        Self { lanes }.intersection(PLAYABLE_MASK)
+    }
+
+    /// Returns this mask shifted one column toward lower column indices.
+    ///
+    /// Bits in column 0 are dropped instead of wrapping into the previous row's
+    /// padding bits.
+    #[must_use]
+    pub const fn shift_west(self) -> Self {
+        let source = self.intersection(WEST_SHIFT_SOURCE_MASK);
+        let mut lanes = [0u128; BOARD_LANES];
+        let mut lane = 0;
+
+        while lane < BOARD_LANES {
+            lanes[lane] = source.lanes[lane] >> 1;
+            lane += 1;
+        }
+
+        Self { lanes }
+    }
+
+    /// Returns this mask shifted one column toward higher column indices.
+    ///
+    /// Bits in column 19 are dropped instead of moving into row-padding bits.
+    #[must_use]
+    pub const fn shift_east(self) -> Self {
+        let source = self.intersection(EAST_SHIFT_SOURCE_MASK);
+        let mut lanes = [0u128; BOARD_LANES];
+        let mut lane = 0;
+
+        while lane < BOARD_LANES {
+            lanes[lane] = source.lanes[lane] << 1;
+            lane += 1;
+        }
+
+        Self { lanes }
     }
 }
