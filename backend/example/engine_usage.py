@@ -70,7 +70,9 @@ def demo_pieces_api(engine: be.BlocusEngine) -> None:
     # Inspect a specific piece (e.g., piece 3, the V3 piece)
     v3 = engine.piece(3)
     print(
-        f"Piece {v3.id} is '{v3.name}' with {v3.square_count} squares and {v3.orientation_count} unique orientations.")
+        f"Piece {v3.id} is '{v3.name}' with"
+        f" {v3.square_count} squares and {v3.orientation_count} orientations."
+    )
 
     print("Orientations:")
     for ori in v3.orientations:
@@ -205,7 +207,7 @@ def main() -> None:
         print(f"  {error}")
 
     # 6. Apply Yellow Move
-    yellow_opening_move = be.PlaceCommand(
+    _yellow_opening_move = be.PlaceCommand(
         command_id=uuid(3),
         game_id=GAME_ID,
         player_id=PLAYER_TWO,
@@ -213,11 +215,10 @@ def main() -> None:
         piece_id=4,  # I4 piece
         orientation_id=0,
         row=0,
-        col=16,  # Valid placement for a length 4 piece starting at 19 and growing left depending on rotation
+        col=16,
     )
 
     # Wait, lets make sure Yellow places exactly at its corner.
-    # The piece 0 (I1) is the safest brute-force corner placement if we don't calculate orientation offsets here.
     yellow_safe_move = be.PlaceCommand(
         command_id=uuid(3),
         game_id=GAME_ID,
