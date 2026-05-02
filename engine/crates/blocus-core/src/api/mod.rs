@@ -10,4 +10,4 @@ pub use command::{Command, PassCommand, PlaceCommand};
 pub use event::{DomainEvent, DomainEventKind, DomainResponse, DomainResponseKind};
 pub use result::GameResult;
 pub use score::{LegalMove, ScoreBoard, ScoreEntry};
-pub use state::{GameState, GameStatus, ScoringMode, StateSchemaVersion};
+pub use state::{GameState, GameStatus, LastPieceByColor, ScoringMode, StateSchemaVersion};

@@ -4,7 +4,6 @@ use crate::{GameId, StateVersion};
 
 /// Domain event kind emitted by successful state transitions.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-#[non_exhaustive]
 pub enum DomainEventKind {
     /// A piece was placed.
     MoveApplied,
@@ -44,7 +43,6 @@ pub struct DomainEvent {
 
 /// Engine response summary kind.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-#[non_exhaustive]
 pub enum DomainResponseKind {
     /// A move was applied.
     MoveApplied,

@@ -1,7 +1,7 @@
 use blocus_core::{
-    BoardState, GameId, GameMode, GameState, GameStatus, PLAYER_COLOR_COUNT, PieceInventory,
-    PlayerId, PlayerSlots, ScoringMode, StateSchemaVersion, StateVersion, TurnOrder, TurnState,
-    ZobristHash,
+    BoardState, GameId, GameMode, GameState, GameStatus, LastPieceByColor, PLAYER_COLOR_COUNT,
+    PieceInventory, PlayerId, PlayerSlots, ScoringMode, StateSchemaVersion, StateVersion,
+    TurnOrder, TurnState, ZobristHash,
 };
 use std::mem::size_of;
 use uuid::Uuid;
@@ -36,6 +36,7 @@ fn state() -> GameState {
         player_slots: player_slots(),
         board: BoardState::EMPTY,
         inventories: [PieceInventory::EMPTY; PLAYER_COLOR_COUNT],
+        last_piece_by_color: LastPieceByColor::EMPTY,
         turn: TurnState::new(TurnOrder::OFFICIAL_FIXED),
         status: GameStatus::InProgress,
         version: StateVersion::INITIAL,
@@ -58,6 +59,7 @@ fn game_state_contains_real_contract_fields() {
         state.inventories,
         [PieceInventory::EMPTY; PLAYER_COLOR_COUNT]
     );
+    assert_eq!(state.last_piece_by_color, LastPieceByColor::EMPTY);
     assert_eq!(state.turn, TurnState::new(TurnOrder::OFFICIAL_FIXED));
     assert_eq!(state.status, GameStatus::InProgress);
     assert_eq!(state.version, StateVersion::INITIAL);
@@ -83,7 +85,7 @@ fn game_state_size_is_documented() {
 
     assert!(size > 0);
     assert!(
-        size <= 512,
+        size <= 544,
         "GameState should stay compact enough for AI search cloning; actual size: {size}"
     );
 }

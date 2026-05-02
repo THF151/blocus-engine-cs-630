@@ -1,8 +1,8 @@
 use blocus_core::{
     BoardIndex, BoardMask, DomainError, GameId, GameMode, GameState, GameStatus, InputError,
-    OrientationId, PassCommand, PieceId, PlaceCommand, PlayerColor, PlayerId, PlayerSlots,
-    RuleViolation, ScoringMode, StateVersion, TurnOrder, TurnState, ZobristHash, build_placement,
-    standard_piece, standard_repository, validate_place_command,
+    LastPieceByColor, OrientationId, PassCommand, PieceId, PlaceCommand, PlayerColor, PlayerId,
+    PlayerSlots, RuleViolation, ScoringMode, StateVersion, TurnOrder, TurnState, ZobristHash,
+    build_placement, standard_piece, standard_repository, validate_place_command,
 };
 use uuid::Uuid;
 
@@ -60,6 +60,7 @@ fn state() -> GameState {
         player_slots: two_player_slots(),
         board: blocus_core::BoardState::EMPTY,
         inventories: [blocus_core::PieceInventory::EMPTY; blocus_core::PLAYER_COLOR_COUNT],
+        last_piece_by_color: LastPieceByColor::EMPTY,
         turn: TurnState::new(TurnOrder::OFFICIAL_FIXED),
         status: GameStatus::InProgress,
         version: StateVersion::INITIAL,
@@ -263,6 +264,9 @@ fn validate_place_command_accepts_non_first_move_with_diagonal_same_color_contac
         .board
         .place_mask(PlayerColor::Blue, BoardMask::from_index(board_index(0, 0)));
     state.inventories[PlayerColor::Blue.index()].mark_used(piece_id(0));
+    state
+        .last_piece_by_color
+        .set(PlayerColor::Blue, piece_id(0));
 
     let command = PlaceCommand {
         command_id: blocus_core::CommandId::from_uuid(uuid(100)),
@@ -288,6 +292,9 @@ fn validate_place_command_rejects_non_first_move_without_same_color_corner_conta
         .board
         .place_mask(PlayerColor::Blue, BoardMask::from_index(board_index(0, 0)));
     state.inventories[PlayerColor::Blue.index()].mark_used(piece_id(0));
+    state
+        .last_piece_by_color
+        .set(PlayerColor::Blue, piece_id(0));
 
     let command = PlaceCommand {
         command_id: blocus_core::CommandId::from_uuid(uuid(101)),
@@ -313,6 +320,9 @@ fn validate_place_command_ignores_different_color_diagonal_contact() {
         BoardMask::from_index(board_index(10, 10)),
     );
     state.inventories[PlayerColor::Blue.index()].mark_used(piece_id(0));
+    state
+        .last_piece_by_color
+        .set(PlayerColor::Blue, piece_id(0));
     state.board.place_mask(
         PlayerColor::Yellow,
         BoardMask::from_index(board_index(0, 0)),
@@ -341,6 +351,9 @@ fn validate_place_command_rejects_same_color_edge_contact() {
         .board
         .place_mask(PlayerColor::Blue, BoardMask::from_index(board_index(0, 0)));
     state.inventories[PlayerColor::Blue.index()].mark_used(piece_id(0));
+    state
+        .last_piece_by_color
+        .set(PlayerColor::Blue, piece_id(0));
 
     let command = PlaceCommand {
         command_id: blocus_core::CommandId::from_uuid(uuid(103)),

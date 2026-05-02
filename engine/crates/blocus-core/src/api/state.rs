@@ -2,8 +2,8 @@
 
 use crate::pieces::PieceInventory;
 use crate::{
-    BoardState, GameId, GameMode, PLAYER_COLOR_COUNT, PlayerSlots, StateVersion, TurnOrder,
-    TurnState, ZobristHash,
+    BoardState, GameId, GameMode, PLAYER_COLOR_COUNT, PieceId, PlayerColor, PlayerSlots,
+    StateVersion, TurnOrder, TurnState, ZobristHash,
 };
 
 /// Current serialized state schema version.
@@ -60,6 +60,72 @@ pub enum ScoringMode {
     Advanced,
 }
 
+/// Compact tracking for the last placed piece per color.
+///
+/// Each color uses one five-bit slot:
+///
+/// - `0` means no placed piece has been recorded.
+/// - `1..=21` stores `piece_id + 1`.
+///
+/// This keeps [`GameState`] below the compact-state size budget while still
+/// supporting the advanced-scoring monomino-last bonus.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash)]
+pub struct LastPieceByColor {
+    packed: u32,
+}
+
+impl LastPieceByColor {
+    /// Empty last-piece tracking.
+    pub const EMPTY: Self = Self { packed: 0 };
+
+    /// Creates the compact tracker from a raw packed value.
+    ///
+    /// Bits outside the four five-bit slots are ignored.
+    #[must_use]
+    pub const fn from_packed(packed: u32) -> Self {
+        Self {
+            packed: packed & LAST_PIECE_PACKED_MASK,
+        }
+    }
+
+    /// Returns the raw packed representation.
+    #[must_use]
+    pub const fn packed(self) -> u32 {
+        self.packed
+    }
+
+    /// Returns the last placed piece for a color, if one has been recorded.
+    #[must_use]
+    pub fn get(self, color: PlayerColor) -> Option<PieceId> {
+        let slot = (self.packed >> last_piece_shift(color)) & LAST_PIECE_SLOT_MASK;
+
+        if slot == 0 {
+            None
+        } else {
+            PieceId::try_new(u8::try_from(slot - 1).unwrap_or_else(|_| {
+                unreachable!("last-piece slot stores only values in the range 1..=21")
+            }))
+            .ok()
+        }
+    }
+
+    /// Records the last placed piece for a color.
+    pub fn set(&mut self, color: PlayerColor, piece_id: PieceId) {
+        let shift = last_piece_shift(color);
+        let clear_mask = !(LAST_PIECE_SLOT_MASK << shift);
+        let encoded = u32::from(piece_id.as_u8()) + 1;
+
+        self.packed = (self.packed & clear_mask) | (encoded << shift);
+    }
+
+    /// Returns a copy with the last placed piece recorded for a color.
+    #[must_use]
+    pub fn with_set(mut self, color: PlayerColor, piece_id: PieceId) -> Self {
+        self.set(color, piece_id);
+        self
+    }
+}
+
 /// Public game-state DTO.
 ///
 /// This is a value object. It deliberately stores compact domain primitives
@@ -82,6 +148,8 @@ pub struct GameState {
     pub board: BoardState,
     /// Per-color inventories.
     pub inventories: [PieceInventory; PLAYER_COLOR_COUNT],
+    /// Last placed piece by color, used for advanced scoring bonuses.
+    pub last_piece_by_color: LastPieceByColor,
     /// Turn progression state.
     pub turn: TurnState,
     /// Game status.
@@ -90,4 +158,19 @@ pub struct GameState {
     pub version: StateVersion,
     /// Semantic state hash placeholder.
     pub hash: ZobristHash,
+}
+
+const LAST_PIECE_SLOT_BITS: u32 = 5;
+const LAST_PIECE_SLOT_MASK: u32 = (1u32 << LAST_PIECE_SLOT_BITS) - 1;
+const LAST_PIECE_PACKED_MASK: u32 = (1u32 << (LAST_PIECE_SLOT_BITS * 4)) - 1;
+
+const fn last_piece_shift(color: PlayerColor) -> u32 {
+    let slot = match color {
+        PlayerColor::Blue => 0,
+        PlayerColor::Yellow => 1,
+        PlayerColor::Red => 2,
+        PlayerColor::Green => 3,
+    };
+
+    slot * LAST_PIECE_SLOT_BITS
 }

@@ -15,11 +15,12 @@ pub mod ids;
 pub mod movegen;
 pub mod pieces;
 pub mod rules;
+pub mod scoring;
 
 pub use api::{
     Command, DomainEvent, DomainEventKind, DomainResponse, DomainResponseKind, GameResult,
-    GameState, GameStatus, LegalMove, PassCommand, PlaceCommand, ScoreBoard, ScoreEntry,
-    ScoringMode, StateSchemaVersion,
+    GameState, GameStatus, LastPieceByColor, LegalMove, PassCommand, PlaceCommand, ScoreBoard,
+    ScoreEntry, ScoringMode, StateSchemaVersion,
 };
 pub use board::{
     BOARD_BITS, BOARD_LANES, BOARD_SIZE, BoardIndex, BoardMask, BoardState, PLAYABLE_CELLS,
@@ -40,3 +41,4 @@ pub use pieces::{
     ShapeBitmap, standard_piece, standard_pieces, standard_repository,
 };
 pub use rules::{Placement, build_placement, validate_place_command};
+pub use scoring::score_game;

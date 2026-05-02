@@ -1,13 +1,13 @@
 //! Engine facade and state-transition orchestration.
 //!
 //! This module exposes the high-level domain API. Concrete move validation,
-//! move generation, scoring, and hashing are delegated to focused modules as
-//! they become available.
+//! move generation, scoring, and hashing are delegated to focused modules.
 
+use crate::api::state::LastPieceByColor;
 use crate::pieces::{PieceInventory, PieceRepository};
 use crate::{
     BoardState, Command, DomainError, DomainEvent, DomainEventKind, DomainResponse,
-    DomainResponseKind, EngineError, GameConfig, GameResult, GameState, GameStatus, LegalMove,
+    DomainResponseKind, GameConfig, GameResult, GameState, GameStatus, LegalMove,
     PLAYER_COLOR_COUNT, PassCommand, PlaceCommand, PlayerColor, PlayerId, RuleViolation,
     ScoringMode, StateSchemaVersion, StateVersion, ZobristHash, standard_repository,
 };
@@ -40,9 +40,6 @@ impl BlocusEngine {
     }
 
     /// Initializes a new game from a validated configuration.
-    ///
-    /// `GameConfig` is already a validated value object in the current model,
-    /// so initialization only assembles the first immutable state snapshot.
     #[must_use]
     pub fn initialize_game(&self, config: GameConfig) -> GameState {
         GameState {
@@ -54,6 +51,7 @@ impl BlocusEngine {
             turn_order: config.turn_order(),
             player_slots: config.player_slots(),
             inventories: [PieceInventory::EMPTY; PLAYER_COLOR_COUNT],
+            last_piece_by_color: LastPieceByColor::EMPTY,
             turn: crate::TurnState::new(config.turn_order()),
             status: GameStatus::InProgress,
             version: StateVersion::INITIAL,
@@ -110,7 +108,7 @@ impl BlocusEngine {
     ///
     /// # Errors
     ///
-    /// Propagates move-iterator construction errors.
+    /// Propates move-iterator construction errors.
     pub fn has_any_valid_move(
         &self,
         state: &GameState,
@@ -125,17 +123,13 @@ impl BlocusEngine {
     /// # Errors
     ///
     /// Returns [`RuleViolation::GameNotFinished`] when called before the game
-    /// has finished. Final score calculation itself is not implemented yet.
+    /// has finished.
     pub fn score_game(
         &self,
         state: &GameState,
-        _scoring: ScoringMode,
+        scoring: ScoringMode,
     ) -> Result<crate::ScoreBoard, DomainError> {
-        if state.status != GameStatus::Finished {
-            return Err(RuleViolation::GameNotFinished.into());
-        }
-
-        Err(EngineError::InvariantViolation.into())
+        crate::scoring::score_game(state, self.piece_repository(), scoring)
     }
 }
 
@@ -156,6 +150,9 @@ fn apply_place_command(
 
     next_state.board.place_mask(command.color, placement.mask());
     next_state.inventories[command.color.index()].mark_used(command.piece_id);
+    next_state
+        .last_piece_by_color
+        .set(command.color, command.piece_id);
 
     let turn_advanced = next_state
         .turn
@@ -336,9 +333,6 @@ fn any_unpassed_color_has_valid_move(
 }
 
 /// Returns true when the native engine crate is linked and callable.
-///
-/// This remains useful as a deployment/linkage smoke check even after gameplay
-/// APIs exist.
 #[must_use]
 pub const fn engine_health() -> bool {
     true

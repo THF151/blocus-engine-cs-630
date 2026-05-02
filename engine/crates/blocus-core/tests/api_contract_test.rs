@@ -1,7 +1,7 @@
 use blocus_core::{
     BoardIndex, BoardState, Command, CommandId, DomainEvent, DomainEventKind, DomainResponse,
-    DomainResponseKind, GameId, GameResult, GameStatus, LegalMove, OrientationId, PassCommand,
-    PieceId, PlaceCommand, PlayerColor, PlayerId, ScoreBoard, ScoreEntry, ScoringMode,
+    DomainResponseKind, GameId, GameResult, GameStatus, LastPieceByColor, LegalMove, OrientationId,
+    PassCommand, PieceId, PlaceCommand, PlayerColor, PlayerId, ScoreBoard, ScoreEntry, ScoringMode,
     StateSchemaVersion, StateVersion, ZobristHash,
 };
 use std::collections::HashSet;
@@ -61,6 +61,7 @@ fn game_state(version: u64) -> blocus_core::GameState {
         player_slots,
         board: BoardState::EMPTY,
         inventories: [blocus_core::PieceInventory::EMPTY; blocus_core::PLAYER_COLOR_COUNT],
+        last_piece_by_color: LastPieceByColor::EMPTY,
         turn: blocus_core::TurnState::new(blocus_core::TurnOrder::OFFICIAL_FIXED),
         status: GameStatus::InProgress,
         version: StateVersion::new(version),
@@ -146,6 +147,68 @@ fn scoring_mode_variants_are_copy_ordered_and_hashable() {
     assert_eq!(modes.len(), 2);
     assert!(modes.contains(&ScoringMode::Basic));
     assert!(modes.contains(&ScoringMode::Advanced));
+}
+
+#[test]
+fn last_piece_by_color_empty_has_no_recorded_pieces() {
+    let tracker = LastPieceByColor::EMPTY;
+
+    for color in PlayerColor::ALL {
+        assert_eq!(tracker.get(color), None);
+    }
+}
+
+#[test]
+fn last_piece_by_color_records_one_piece_per_color_compactly() {
+    let mut tracker = LastPieceByColor::EMPTY;
+
+    tracker.set(PlayerColor::Blue, piece_id(0));
+    tracker.set(PlayerColor::Yellow, piece_id(20));
+    tracker.set(PlayerColor::Red, piece_id(7));
+    tracker.set(PlayerColor::Green, piece_id(12));
+
+    assert_eq!(tracker.get(PlayerColor::Blue), Some(piece_id(0)));
+    assert_eq!(tracker.get(PlayerColor::Yellow), Some(piece_id(20)));
+    assert_eq!(tracker.get(PlayerColor::Red), Some(piece_id(7)));
+    assert_eq!(tracker.get(PlayerColor::Green), Some(piece_id(12)));
+}
+
+#[test]
+fn last_piece_by_color_overwrites_only_selected_color() {
+    let mut tracker = LastPieceByColor::EMPTY;
+
+    tracker.set(PlayerColor::Blue, piece_id(0));
+    tracker.set(PlayerColor::Yellow, piece_id(1));
+    tracker.set(PlayerColor::Blue, piece_id(2));
+
+    assert_eq!(tracker.get(PlayerColor::Blue), Some(piece_id(2)));
+    assert_eq!(tracker.get(PlayerColor::Yellow), Some(piece_id(1)));
+    assert_eq!(tracker.get(PlayerColor::Red), None);
+    assert_eq!(tracker.get(PlayerColor::Green), None);
+}
+
+#[test]
+fn last_piece_by_color_is_copy_comparable_hashable_and_debug() {
+    let mut first = LastPieceByColor::EMPTY;
+    first.set(PlayerColor::Blue, piece_id(0));
+
+    let copied = first;
+    let duplicate = first;
+
+    let mut other = LastPieceByColor::EMPTY;
+    other.set(PlayerColor::Blue, piece_id(1));
+
+    assert_eq!(first, copied);
+    assert_eq!(first, duplicate);
+    assert_ne!(first, other);
+    assert!(format!("{first:?}").contains("LastPieceByColor"));
+
+    let mut values = HashSet::new();
+    values.insert(first);
+    values.insert(duplicate);
+    values.insert(other);
+
+    assert_eq!(values.len(), 2);
 }
 
 #[test]
@@ -410,6 +473,7 @@ fn game_state_is_a_typed_value_object() {
     assert_eq!(state, duplicate);
     assert_eq!(state.schema_version, StateSchemaVersion::CURRENT);
     assert_eq!(state.board, BoardState::EMPTY);
+    assert_eq!(state.last_piece_by_color, LastPieceByColor::EMPTY);
     assert_eq!(state.status, GameStatus::InProgress);
     assert_eq!(state.version, StateVersion::new(0));
     assert_eq!(state.hash, ZobristHash::ZERO);

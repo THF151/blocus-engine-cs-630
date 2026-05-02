@@ -3,7 +3,7 @@
 use crate::command::{PyPassCommand, PyPlaceCommand};
 use crate::config::GameConfig;
 use crate::conversion::{map_domain_error, parse_player_id};
-use crate::result::{GameResult, LegalMove};
+use crate::result::{GameResult, LegalMove, ScoreBoard};
 use crate::state::GameState;
 use crate::types::{PlayerColor, ScoringMode};
 use pyo3::prelude::*;
@@ -66,10 +66,10 @@ impl BlocusEngine {
             .map_err(map_domain_error)
     }
 
-    fn score_game(&self, state: &GameState, scoring: &ScoringMode) -> PyResult<()> {
+    fn score_game(&self, state: &GameState, scoring: &ScoringMode) -> PyResult<ScoreBoard> {
         self.inner
             .score_game(state.as_core(), scoring.as_core())
-            .map(|_scoreboard| ())
+            .map(ScoreBoard::from_core)
             .map_err(map_domain_error)
     }
 
