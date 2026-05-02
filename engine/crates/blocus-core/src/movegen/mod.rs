@@ -39,8 +39,8 @@ impl LegalMoveIter {
     /// Creates a new lazy legal move iterator.
     ///
     /// Constructs an exhausted iterator when the gameplay context is invalid:
-    /// finished game, wrong color's turn, or a player who cannot control the
-    /// requested color.
+    /// finished game, wrong color's turn, or a player who is not scheduled to
+    /// act for the requested color.
     #[must_use]
     pub fn new(
         state: &GameState,
@@ -50,7 +50,9 @@ impl LegalMoveIter {
     ) -> Self {
         let context_is_valid = state.status == GameStatus::InProgress
             && state.turn.current_color() == color
-            && state.player_slots.can_control_color(player_id, color);
+            && state
+                .turn
+                .is_active_controller(state.player_slots, player_id);
 
         let own_mask = state.board.occupied(color);
         let occupied_mask = state.board.occupied_all();
@@ -214,14 +216,16 @@ fn has_corner_contact(placement: BoardMask, own: BoardMask) -> bool {
 ///
 /// # Errors
 ///
-/// Reserved for future invariant-validation phases. Currently always returns
-/// `Ok`; invalid gameplay query contexts produce an exhausted iterator.
+/// Returns [`crate::EngineError::CorruptedState`] if the supplied state violates
+/// compact board or turn invariants.
 pub fn legal_moves_iter(
     state: &GameState,
     repository: &'static PieceRepository,
     player_id: PlayerId,
     color: PlayerColor,
 ) -> Result<LegalMoveIter, DomainError> {
+    crate::validate_game_state(state)?;
+
     Ok(LegalMoveIter::new(state, repository, player_id, color))
 }
 

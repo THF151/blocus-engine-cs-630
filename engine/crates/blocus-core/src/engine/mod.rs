@@ -6,10 +6,10 @@
 use crate::api::state::LastPieceByColor;
 use crate::pieces::{PieceInventory, PieceRepository};
 use crate::{
-    BoardState, Command, DomainError, DomainEvent, DomainEventKind, DomainResponse,
-    DomainResponseKind, GameConfig, GameResult, GameState, GameStatus, LegalMove,
+    BoardMask, BoardState, Command, DomainError, DomainEvent, DomainEventKind, DomainResponse,
+    DomainResponseKind, EngineError, GameConfig, GameResult, GameState, GameStatus, LegalMove,
     PLAYER_COLOR_COUNT, PassCommand, PlaceCommand, PlayerColor, PlayerId, RuleViolation,
-    ScoringMode, StateSchemaVersion, StateVersion, ZobristHash, standard_repository,
+    ScoringMode, StateSchemaVersion, StateVersion, standard_repository,
 };
 
 /// Pure Rust Blocus engine facade.
@@ -55,7 +55,7 @@ impl BlocusEngine {
             turn: crate::TurnState::new(config.turn_order()),
             status: GameStatus::InProgress,
             version: StateVersion::INITIAL,
-            hash: ZobristHash::ZERO,
+            hash: crate::ZobristHash::ZERO,
         };
 
         state.hash = crate::compute_hash_full(&state);
@@ -69,6 +69,8 @@ impl BlocusEngine {
     /// Returns a typed domain error if the command is invalid for the current
     /// state.
     pub fn apply(&self, state: &GameState, command: Command) -> Result<GameResult, DomainError> {
+        validate_game_state(state)?;
+
         match command {
             Command::Place(command) => apply_place_command(state, command, self.piece_repository()),
             Command::Pass(command) => apply_pass_command(state, command, self.piece_repository()),
@@ -82,8 +84,8 @@ impl BlocusEngine {
     ///
     /// # Errors
     ///
-    /// Reserved for future corrupted-state validation. Invalid gameplay query
-    /// contexts currently produce an exhausted iterator.
+    /// Returns [`EngineError::CorruptedState`] if `state` violates compact board
+    /// invariants.
     pub fn valid_moves_iter(
         &self,
         state: &GameState,
@@ -111,7 +113,7 @@ impl BlocusEngine {
     ///
     /// # Errors
     ///
-    /// Propates move-iterator construction errors.
+    /// Propagates move-iterator construction errors.
     pub fn has_any_valid_move(
         &self,
         state: &GameState,
@@ -132,6 +134,7 @@ impl BlocusEngine {
         state: &GameState,
         scoring: ScoringMode,
     ) -> Result<crate::ScoreBoard, DomainError> {
+        validate_game_state(state)?;
         crate::scoring::score_game(state, self.piece_repository(), scoring)
     }
 }
@@ -140,6 +143,58 @@ impl Default for BlocusEngine {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Validates cheap structural invariants for a game state.
+///
+/// This function intentionally validates state shape, not full historical
+/// reachability. It is suitable for public API boundaries and deserialization
+/// boundaries.
+///
+/// # Errors
+///
+/// Returns [`EngineError::CorruptedState`] when board masks contain padding
+/// bits, color masks overlap, or in-progress turn state has no active
+/// controller.
+pub fn validate_game_state(state: &GameState) -> Result<(), DomainError> {
+    validate_board_invariants(state)?;
+    validate_turn_invariants(state)?;
+
+    Ok(())
+}
+
+fn validate_board_invariants(state: &GameState) -> Result<(), DomainError> {
+    let mut occupied = BoardMask::EMPTY;
+
+    for color in PlayerColor::ALL {
+        let color_mask = state.board.occupied(color);
+
+        if !color_mask.is_playable_subset() {
+            return Err(EngineError::CorruptedState.into());
+        }
+
+        if occupied.intersects(color_mask) {
+            return Err(EngineError::CorruptedState.into());
+        }
+
+        occupied = occupied.union(color_mask);
+    }
+
+    Ok(())
+}
+
+fn validate_turn_invariants(state: &GameState) -> Result<(), DomainError> {
+    if state.status == GameStatus::InProgress {
+        if state.turn.is_passed(state.turn.current_color()) {
+            return Err(EngineError::CorruptedState.into());
+        }
+
+        if state.turn.active_controller(state.player_slots).is_none() {
+            return Err(EngineError::CorruptedState.into());
+        }
+    }
+
+    Ok(())
 }
 
 fn apply_place_command(
@@ -162,14 +217,7 @@ fn apply_place_command(
         .advance(next_state.turn_order, next_state.player_slots)
         .is_some();
 
-    if !turn_advanced || !any_unpassed_color_has_valid_move(&next_state, repository) {
-        next_state.status = GameStatus::Finished;
-    }
-
-    next_state.version = next_state.version.saturating_next();
-    next_state.hash = crate::compute_hash_full(&next_state);
-
-    let is_finished = next_state.status == GameStatus::Finished;
+    let is_finished = finalize_after_turn_resolution(&mut next_state, turn_advanced, repository);
 
     let mut events = Vec::with_capacity(2);
     events.push(DomainEvent {
@@ -225,14 +273,7 @@ fn apply_pass_command(
         .advance(next_state.turn_order, next_state.player_slots)
         .is_some();
 
-    if !turn_advanced || !any_unpassed_color_has_valid_move(&next_state, repository) {
-        next_state.status = GameStatus::Finished;
-    }
-
-    next_state.version = next_state.version.saturating_next();
-    next_state.hash = ZobristHash::ZERO;
-
-    let is_finished = next_state.status == GameStatus::Finished;
+    let is_finished = finalize_after_turn_resolution(&mut next_state, turn_advanced, repository);
 
     let mut events = Vec::with_capacity(2);
     events.push(DomainEvent {
@@ -273,6 +314,21 @@ fn apply_pass_command(
     })
 }
 
+fn finalize_after_turn_resolution(
+    next_state: &mut GameState,
+    turn_advanced: bool,
+    repository: &'static PieceRepository,
+) -> bool {
+    if !turn_advanced || !any_unpassed_color_has_valid_move(next_state, repository) {
+        next_state.status = GameStatus::Finished;
+    }
+
+    next_state.version = next_state.version.saturating_next();
+    next_state.hash = crate::compute_hash_full(next_state);
+
+    next_state.status == GameStatus::Finished
+}
+
 fn validate_pass_command(
     state: &GameState,
     command: PassCommand,
@@ -286,15 +342,15 @@ fn validate_pass_command(
         return Err(crate::InputError::GameIdMismatch.into());
     }
 
-    if !state
-        .player_slots
-        .can_control_color(command.player_id, command.color)
-    {
-        return Err(RuleViolation::PlayerDoesNotControlColor.into());
-    }
-
     if state.turn.current_color() != command.color {
         return Err(RuleViolation::WrongPlayerTurn.into());
+    }
+
+    if !state
+        .turn
+        .is_active_controller(state.player_slots, command.player_id)
+    {
+        return Err(RuleViolation::PlayerDoesNotControlColor.into());
     }
 
     if crate::movegen::has_any_valid_move(state, repository, command.player_id, command.color)? {

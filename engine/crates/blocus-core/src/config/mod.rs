@@ -23,7 +23,7 @@ impl GameMode {
     pub const fn turn_order_policy(self) -> TurnOrderPolicy {
         match self {
             Self::TwoPlayer | Self::ThreePlayer => TurnOrderPolicy::OfficialFixed,
-            Self::FourPlayer => TurnOrderPolicy::Flexible,
+            Self::FourPlayer => TurnOrderPolicy::ClockwiseRotation,
         }
     }
 
@@ -346,6 +346,27 @@ impl TurnState {
     #[must_use]
     pub const fn current_player(self, player_slots: PlayerSlots) -> Option<PlayerId> {
         player_slots.turn_controller_of(self.current_color, self.shared_color_turn_index)
+    }
+
+    /// Returns the active player for the current color.
+    #[must_use]
+    pub const fn active_controller(self, player_slots: PlayerSlots) -> Option<PlayerId> {
+        self.current_player(player_slots)
+    }
+
+    /// Returns true if `player_id` is the player scheduled to act now.
+    #[must_use]
+    pub const fn is_active_controller(
+        self,
+        player_slots: PlayerSlots,
+        player_id: PlayerId,
+    ) -> bool {
+        match self.active_controller(player_slots) {
+            Some(active_player) => {
+                active_player.as_uuid().as_u128() == player_id.as_uuid().as_u128()
+            }
+            None => false,
+        }
     }
 
     /// Advances to the next non-passed color.

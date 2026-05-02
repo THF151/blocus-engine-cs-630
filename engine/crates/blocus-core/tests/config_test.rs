@@ -42,7 +42,7 @@ fn game_mode_reports_turn_order_policy_and_player_count() {
     );
     assert_eq!(
         GameMode::FourPlayer.turn_order_policy(),
-        TurnOrderPolicy::Flexible
+        TurnOrderPolicy::ClockwiseRotation
     );
 
     assert_eq!(GameMode::TwoPlayer.player_count(), 2);

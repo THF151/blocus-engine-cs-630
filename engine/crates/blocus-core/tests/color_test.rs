@@ -33,7 +33,7 @@ const CONST_OFFICIAL_TURN_ORDER_IS_FIXED: bool = TurnOrder::OFFICIAL_FIXED.is_of
 const CONST_FIXED_POLICY_OK: Result<(), InputError> =
     TurnOrder::OFFICIAL_FIXED.validate_for_policy(TurnOrderPolicy::OfficialFixed);
 const CONST_FLEXIBLE_POLICY_OK: Result<(), InputError> =
-    TurnOrder::OFFICIAL_FIXED.validate_for_policy(TurnOrderPolicy::Flexible);
+    TurnOrder::OFFICIAL_FIXED.validate_for_policy(TurnOrderPolicy::ClockwiseRotation);
 
 fn custom_turn_order() -> TurnOrder {
     let Ok(order) = TurnOrder::try_new([
@@ -356,7 +356,7 @@ fn turn_order_position_of_uses_game_specific_order_not_storage_index() {
 #[test]
 fn flexible_policy_allows_official_fixed_order() {
     assert_eq!(
-        TurnOrder::OFFICIAL_FIXED.validate_for_policy(TurnOrderPolicy::Flexible),
+        TurnOrder::OFFICIAL_FIXED.validate_for_policy(TurnOrderPolicy::ClockwiseRotation),
         Ok(())
     );
 }
@@ -366,7 +366,7 @@ fn flexible_policy_allows_custom_order() {
     let custom_order = custom_turn_order();
 
     assert_eq!(
-        custom_order.validate_for_policy(TurnOrderPolicy::Flexible),
+        custom_order.validate_for_policy(TurnOrderPolicy::ClockwiseRotation),
         Ok(())
     );
 }
@@ -388,8 +388,8 @@ fn official_fixed_policy_requires_official_fixed_order() {
 
 #[test]
 fn turn_order_policy_is_copy_comparable_ordered_and_hashable() {
-    let flexible = TurnOrderPolicy::Flexible;
-    let duplicate_flexible = TurnOrderPolicy::Flexible;
+    let flexible = TurnOrderPolicy::ClockwiseRotation;
+    let duplicate_flexible = TurnOrderPolicy::ClockwiseRotation;
     let fixed = TurnOrderPolicy::OfficialFixed;
     let copied = flexible;
 
@@ -404,7 +404,7 @@ fn turn_order_policy_is_copy_comparable_ordered_and_hashable() {
     policies.insert(fixed);
 
     assert_eq!(policies.len(), 2);
-    assert!(policies.contains(&TurnOrderPolicy::Flexible));
+    assert!(policies.contains(&TurnOrderPolicy::ClockwiseRotation));
     assert!(policies.contains(&TurnOrderPolicy::OfficialFixed));
 }
 

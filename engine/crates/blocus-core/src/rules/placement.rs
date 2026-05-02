@@ -149,15 +149,15 @@ pub fn validate_place_command(
         return Err(InputError::GameIdMismatch.into());
     }
 
-    if !state
-        .player_slots
-        .can_control_color(command.player_id, command.color)
-    {
-        return Err(RuleViolation::PlayerDoesNotControlColor.into());
-    }
-
     if state.turn.current_color() != command.color {
         return Err(RuleViolation::WrongPlayerTurn.into());
+    }
+
+    if !state
+        .turn
+        .is_active_controller(state.player_slots, command.player_id)
+    {
+        return Err(RuleViolation::PlayerDoesNotControlColor.into());
     }
 
     if usize::from(command.piece_id.as_u8()) >= usize::from(PIECE_COUNT) {

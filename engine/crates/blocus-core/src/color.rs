@@ -30,8 +30,7 @@ impl PlayerColor {
     /// not necessarily the gameplay turn order of every game.
     pub const ALL: [Self; PLAYER_COLOR_COUNT] = [Self::Blue, Self::Yellow, Self::Red, Self::Green];
 
-    /// Official fixed turn order used by the two-player and three-player
-    /// variants.
+    /// Official clockwise order: blue, yellow, red, green.
     pub const OFFICIAL_FIXED_TURN_ORDER: [Self; PLAYER_COLOR_COUNT] =
         [Self::Blue, Self::Yellow, Self::Red, Self::Green];
 
@@ -60,11 +59,11 @@ impl PlayerColor {
         }
     }
 
-    /// Returns the next color in the official fixed order.
+    /// Returns the next color in the official clockwise order.
     ///
-    /// Four-player standard games may use a custom [`TurnOrder`], so gameplay
-    /// turn advancement should use [`TurnOrder::next_after`] instead of this
-    /// helper.
+    /// Gameplay turn advancement should use [`TurnOrder::next_after`] because
+    /// four-player games may rotate which color starts while preserving
+    /// clockwise order.
     #[must_use]
     pub const fn next_in_official_fixed_order(self) -> Self {
         match self {
@@ -96,11 +95,11 @@ impl fmt::Display for PlayerColor {
 /// Turn-order validation policy for a game variant.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum TurnOrderPolicy {
-    /// Any permutation of all four colors is allowed.
+    /// The order must be a clockwise rotation of blue, yellow, red, green.
     ///
-    /// This is the policy for four-player standard games where setup chooses
-    /// which player goes first and play continues around the board.
-    Flexible,
+    /// This is the policy for four-player games: the first player may vary,
+    /// but play still proceeds clockwise around the board.
+    ClockwiseRotation,
 
     /// The order must be blue, yellow, red, green.
     ///
@@ -161,6 +160,38 @@ impl TurnOrder {
         )
     }
 
+    /// Returns whether this order preserves clockwise color progression.
+    ///
+    /// The first color may be any color, but the cycle must remain
+    /// blue → yellow → red → green.
+    #[must_use]
+    pub const fn is_clockwise_rotation(self) -> bool {
+        matches!(
+            self.colors,
+            [
+                PlayerColor::Blue,
+                PlayerColor::Yellow,
+                PlayerColor::Red,
+                PlayerColor::Green
+            ] | [
+                PlayerColor::Yellow,
+                PlayerColor::Red,
+                PlayerColor::Green,
+                PlayerColor::Blue
+            ] | [
+                PlayerColor::Red,
+                PlayerColor::Green,
+                PlayerColor::Blue,
+                PlayerColor::Yellow
+            ] | [
+                PlayerColor::Green,
+                PlayerColor::Blue,
+                PlayerColor::Yellow,
+                PlayerColor::Red
+            ]
+        )
+    }
+
     /// Returns the turn-order position of a color.
     ///
     /// Valid [`TurnOrder`] values always contain every [`PlayerColor`] exactly
@@ -192,13 +223,19 @@ impl TurnOrder {
     ///
     /// # Errors
     ///
-    /// Returns [`InputError::InvalidGameConfig`] if the policy requires the
-    /// official fixed order and this order differs.
+    /// Returns [`InputError::InvalidGameConfig`] if the order violates the
+    /// required policy.
     pub const fn validate_for_policy(self, policy: TurnOrderPolicy) -> Result<(), InputError> {
         match policy {
-            TurnOrderPolicy::Flexible => Ok(()),
             TurnOrderPolicy::OfficialFixed => {
                 if self.is_official_fixed() {
+                    Ok(())
+                } else {
+                    Err(InputError::InvalidGameConfig)
+                }
+            }
+            TurnOrderPolicy::ClockwiseRotation => {
+                if self.is_clockwise_rotation() {
                     Ok(())
                 } else {
                     Err(InputError::InvalidGameConfig)

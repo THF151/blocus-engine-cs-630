@@ -1,5 +1,5 @@
 use crate::config::{GameMode, PlayerSlots};
-use crate::conversion::{map_input_error, parse_uuid};
+use crate::conversion::{map_domain_error, map_input_error, parse_uuid};
 use crate::types::{GameStatus, PlayerColor, ScoringMode};
 use pyo3::prelude::*;
 use serde_json::{Value, json};
@@ -29,6 +29,7 @@ impl GameState {
         })?;
 
         let mut state = parse_game_state_json(&value)?;
+        blocus_core::validate_game_state(&state).map_err(map_domain_error)?;
         state.hash = blocus_core::compute_hash_full(&state);
 
         Ok(Self::from_core(state))
