@@ -259,6 +259,9 @@ fn apply_place_command(
     let placement = crate::validate_place_command(state, command, repository)?;
 
     let mut next_state = state.clone();
+    let old_turn = next_state.turn;
+    let old_status = next_state.status;
+    let old_last_piece = next_state.last_piece_by_color;
 
     next_state.board.place_mask(command.color, placement.mask());
     next_state.inventories[command.color.index()].mark_used(command.piece_id);
@@ -272,6 +275,19 @@ fn apply_place_command(
         .is_some();
 
     let is_finished = finalize_after_turn_resolution(&mut next_state, turn_advanced, repository);
+    next_state.hash = crate::xor_place_piece(
+        state.hash,
+        command.color,
+        placement.mask(),
+        command.piece_id,
+    );
+    next_state.hash = crate::xor_last_piece_transition(
+        next_state.hash,
+        old_last_piece,
+        next_state.last_piece_by_color,
+    );
+    next_state.hash = crate::xor_turn_transition(next_state.hash, old_turn, next_state.turn);
+    next_state.hash = crate::xor_status_transition(next_state.hash, old_status, next_state.status);
 
     let mut events = Vec::with_capacity(2);
     events.push(DomainEvent {
@@ -320,6 +336,9 @@ fn apply_pass_command(
     validate_pass_command(state, command, repository)?;
 
     let mut next_state = state.clone();
+    let old_turn = next_state.turn;
+    let old_status = next_state.status;
+
     next_state.turn.mark_passed(command.color);
 
     let turn_advanced = next_state
@@ -328,6 +347,8 @@ fn apply_pass_command(
         .is_some();
 
     let is_finished = finalize_after_turn_resolution(&mut next_state, turn_advanced, repository);
+    next_state.hash = crate::xor_turn_transition(state.hash, old_turn, next_state.turn);
+    next_state.hash = crate::xor_status_transition(next_state.hash, old_status, next_state.status);
 
     let mut events = Vec::with_capacity(2);
     events.push(DomainEvent {
@@ -378,7 +399,6 @@ fn finalize_after_turn_resolution(
     }
 
     next_state.version = next_state.version.saturating_next();
-    next_state.hash = crate::compute_hash_full(next_state);
 
     next_state.status == GameStatus::Finished
 }

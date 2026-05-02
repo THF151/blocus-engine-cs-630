@@ -37,6 +37,11 @@ const LANE_REPRESENTATIVES: [BoardIndex; BOARD_LANES] = [
     FIFTH_LANE_INDEX,
 ];
 
+fn index(row: u8, col: u8) -> BoardIndex {
+    BoardIndex::from_row_col(row, col)
+        .unwrap_or_else(|_| panic!("row {row}, col {col} should be valid"))
+}
+
 #[test]
 fn empty_mask_has_no_lanes_set() {
     let mask = BoardMask::EMPTY;
@@ -361,4 +366,57 @@ fn lanes_accessor_returns_copy_not_mutable_alias() {
 
     assert!(mask.contains(FIRST_LANE_INDEX));
     assert_eq!(lanes[0], 0);
+}
+
+#[test]
+fn pop_lowest_index_returns_indices_in_padded_bit_order() {
+    let mut mask = BoardMask::from_index(index(5, 5))
+        .union(BoardMask::from_index(index(0, 19)))
+        .union(BoardMask::from_index(index(0, 0)));
+
+    assert_eq!(mask.pop_lowest_index(), Some(index(0, 0)));
+    assert_eq!(mask.pop_lowest_index(), Some(index(0, 19)));
+    assert_eq!(mask.pop_lowest_index(), Some(index(5, 5)));
+    assert_eq!(mask.pop_lowest_index(), None);
+}
+
+#[test]
+fn edge_and_diagonal_neighbors_use_blokus_contact_geometry() {
+    let mask = BoardMask::from_index(index(10, 10));
+
+    let edge_neighbors = mask.edge_neighbors();
+    assert!(edge_neighbors.contains(index(9, 10)));
+    assert!(edge_neighbors.contains(index(10, 11)));
+    assert!(edge_neighbors.contains(index(11, 10)));
+    assert!(edge_neighbors.contains(index(10, 9)));
+    assert_eq!(edge_neighbors.count(), 4);
+
+    let diagonal_frontier = mask.diagonal_frontier();
+    assert!(diagonal_frontier.contains(index(9, 9)));
+    assert!(diagonal_frontier.contains(index(9, 11)));
+    assert!(diagonal_frontier.contains(index(11, 9)));
+    assert!(diagonal_frontier.contains(index(11, 11)));
+    assert_eq!(diagonal_frontier.count(), 4);
+}
+
+#[test]
+fn diagonal_frontier_excludes_edge_neighbors_and_own_cells() {
+    let mask = BoardMask::from_index(index(10, 10)).union(BoardMask::from_index(index(11, 11)));
+    let frontier = mask.diagonal_frontier();
+
+    assert!(!frontier.contains(index(10, 10)));
+    assert!(!frontier.contains(index(11, 11)));
+    assert!(!frontier.contains(index(10, 11)));
+    assert!(!frontier.contains(index(11, 10)));
+    assert!(frontier.contains(index(9, 9)));
+    assert!(frontier.contains(index(12, 12)));
+}
+
+#[test]
+fn shift_by_applies_signed_row_and_column_deltas() {
+    let mask = BoardMask::from_index(index(5, 5));
+
+    assert_eq!(mask.shift_by(2, -3), BoardMask::from_index(index(7, 2)));
+    assert_eq!(mask.shift_by(-5, -5), BoardMask::from_index(index(0, 0)));
+    assert_eq!(mask.shift_by(-6, 0), BoardMask::EMPTY);
 }

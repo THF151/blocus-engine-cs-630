@@ -1,6 +1,6 @@
 //! Fixed-size board bit masks.
 
-use crate::board::{BOARD_LANES, BoardIndex};
+use crate::board::{BOARD_LANES, BoardIndex, BoardSymmetry};
 use crate::{BOARD_SIZE, InputError, ROW_STRIDE};
 
 /// Mask containing the 20 playable cells of one padded 32-bit row.
@@ -155,6 +155,27 @@ impl BoardMask {
         result
     }
 
+    /// Removes and returns the lowest playable index in this mask.
+    #[must_use]
+    pub fn pop_lowest_index(&mut self) -> Option<BoardIndex> {
+        for lane_index in 0..BOARD_LANES {
+            while self.lanes[lane_index] != 0 {
+                let offset = self.lanes[lane_index].trailing_zeros();
+                self.lanes[lane_index] &= self.lanes[lane_index] - 1;
+
+                let bit_index = lane_index * u128::BITS as usize + offset as usize;
+                let raw_bit_index = u16::try_from(bit_index)
+                    .unwrap_or_else(|_| unreachable!("board bit index always fits in u16"));
+
+                if let Ok(index) = BoardIndex::from_bit_index(raw_bit_index) {
+                    return Some(index);
+                }
+            }
+        }
+
+        None
+    }
+
     /// Returns a copy of this mask with the index inserted.
     #[must_use]
     pub fn inserted(mut self, index: BoardIndex) -> Self {
@@ -275,6 +296,72 @@ impl BoardMask {
     #[must_use]
     pub const fn is_playable_subset(self) -> bool {
         self.is_subset_of(PLAYABLE_MASK)
+    }
+
+    /// Returns all edge-adjacent neighbor cells of this mask.
+    #[must_use]
+    pub const fn edge_neighbors(self) -> Self {
+        self.shift_north()
+            .union(self.shift_south())
+            .union(self.shift_east())
+            .union(self.shift_west())
+    }
+
+    /// Returns all diagonal neighbor cells of this mask.
+    #[must_use]
+    pub const fn diagonal_neighbors(self) -> Self {
+        let north = self.shift_north();
+        let south = self.shift_south();
+
+        north
+            .shift_east()
+            .union(north.shift_west())
+            .union(south.shift_east())
+            .union(south.shift_west())
+    }
+
+    /// Returns diagonal-only frontier cells for same-color corner contact.
+    #[must_use]
+    pub const fn diagonal_frontier(self) -> Self {
+        self.diagonal_neighbors()
+            .difference(self.edge_neighbors())
+            .difference(self)
+    }
+
+    /// Returns this mask shifted by signed board coordinates.
+    ///
+    /// Positive row deltas shift south; positive column deltas shift east.
+    #[must_use]
+    pub fn shift_by(self, row_delta: i8, col_delta: i8) -> Self {
+        let mut shifted = self;
+
+        let mut row_steps = row_delta.unsigned_abs();
+        while row_steps > 0 {
+            shifted = if row_delta >= 0 {
+                shifted.shift_south()
+            } else {
+                shifted.shift_north()
+            };
+            row_steps -= 1;
+        }
+
+        let mut col_steps = col_delta.unsigned_abs();
+        while col_steps > 0 {
+            shifted = if col_delta >= 0 {
+                shifted.shift_east()
+            } else {
+                shifted.shift_west()
+            };
+            col_steps -= 1;
+        }
+
+        shifted
+    }
+
+    /// Returns this mask after applying a square-board symmetry.
+    #[must_use]
+    pub fn transformed(self, symmetry: BoardSymmetry) -> Self {
+        symmetry.transform_mask(self)
     }
 
     /// Returns this mask shifted one row toward lower row indices.

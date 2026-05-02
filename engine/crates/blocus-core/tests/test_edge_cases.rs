@@ -143,6 +143,7 @@ fn edge_case_successful_pass_hash_is_not_recomputed() {
             .union(BoardMask::from_index(index(1, 0)))
             .union(BoardMask::from_index(index(1, 1))),
     );
+    state.hash = blocus_core::compute_hash_full(&state);
 
     assert_eq!(
         engine.has_any_valid_move(&state, player_id(1), PlayerColor::Blue),

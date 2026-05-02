@@ -16,6 +16,7 @@ pub mod movegen;
 pub mod pieces;
 pub mod rules;
 pub mod scoring;
+pub mod transposition;
 
 pub use api::{
     Command, DomainEvent, DomainEventKind, DomainResponse, DomainResponseKind, GameResult,
@@ -23,14 +24,17 @@ pub use api::{
     ScoreEntry, ScoringMode, StateSchemaVersion,
 };
 pub use board::{
-    BOARD_BITS, BOARD_LANES, BOARD_SIZE, BoardIndex, BoardMask, BoardState, PLAYABLE_CELLS,
-    PLAYABLE_MASK, ROW_PADDING_BITS, ROW_STRIDE,
+    BOARD_BITS, BOARD_LANES, BOARD_SIZE, BoardIndex, BoardMask, BoardState, BoardSymmetry,
+    PLAYABLE_CELLS, PLAYABLE_MASK, ROW_PADDING_BITS, ROW_STRIDE,
 };
 pub use color::{PLAYER_COLOR_COUNT, PlayerColor, TurnOrder, TurnOrderPolicy};
 pub use config::{GameConfig, GameMode, PlayerSlots, SharedColorTurn, TurnState};
 pub use engine::{BlocusEngine, engine_health, validate_game_state};
 pub use error::{DomainError, EngineError, InputError, RuleViolation};
-pub use hash::{board_cell_hash, compute_hash_full, inventory_piece_hash};
+pub use hash::{
+    board_cell_hash, compute_hash_full, inventory_piece_hash, xor_last_piece_transition,
+    xor_place_piece, xor_status_transition, xor_turn_transition,
+};
 pub use ids::{
     CommandId, GameId, MAX_ORIENTATION_COUNT, OrientationId, PIECE_COUNT, PieceId, PlayerId,
     SmallIdError, StateVersion, ZobristHash,
@@ -43,3 +47,4 @@ pub use pieces::{
 };
 pub use rules::{Placement, build_placement, validate_place_command};
 pub use scoring::score_game;
+pub use transposition::{TranspositionBound, TranspositionEntry, TranspositionTable};

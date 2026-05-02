@@ -103,7 +103,7 @@ proptest! {
     }
 
     #[test]
-    fn different_game_ids_produce_different_hashes(
+    fn different_game_ids_do_not_change_position_hashes(
         first_game_id in 1u128..10_000u128,
         second_game_id in 10_001u128..20_000u128,
     ) {
@@ -115,7 +115,7 @@ proptest! {
         let second = engine.initialize_game(two_player_config_with_game_id(second_game_id));
 
         prop_assert_ne!(first.game_id, second.game_id);
-        prop_assert_ne!(first.hash, second.hash);
+        prop_assert_eq!(first.hash, second.hash);
     }
 
     #[test]

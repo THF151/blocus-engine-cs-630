@@ -165,7 +165,7 @@ fn repeated_initialization_is_semantically_stable() {
 }
 
 #[test]
-fn different_game_ids_produce_different_hashes() {
+fn different_game_ids_do_not_change_position_hashes() {
     let engine = BlocusEngine::new();
 
     let first = engine.initialize_game(two_player_config());
@@ -183,7 +183,7 @@ fn different_game_ids_produce_different_hashes() {
     let second = engine.initialize_game(config);
 
     assert_ne!(first.game_id, second.game_id);
-    assert_ne!(first.hash, second.hash);
+    assert_eq!(first.hash, second.hash);
 }
 
 #[test]
