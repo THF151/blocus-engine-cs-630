@@ -13,6 +13,8 @@ crate-type = ["cdylib"]
 [dependencies]
 blocus-core = { path = "../blocus-core" }
 pyo3 = { version = "0.28.3", features = ["extension-module"] }
+uuid = { version = "1.23.1", features = ["v4"] }
+serde_json = "1.0.149"
 
 [lints]
 workspace = true
