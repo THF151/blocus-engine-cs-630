@@ -16,6 +16,19 @@ pub enum DomainEventKind {
     GameFinished,
 }
 
+impl DomainEventKind {
+    /// Returns the stable lowercase API name.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::MoveApplied => "move_applied",
+            Self::PlayerPassed => "player_passed",
+            Self::TurnAdvanced => "turn_advanced",
+            Self::GameFinished => "game_finished",
+        }
+    }
+}
+
 /// Pure domain event returned by the engine.
 ///
 /// Events are data only.
@@ -39,6 +52,18 @@ pub enum DomainResponseKind {
     PlayerPassed,
     /// The game finished.
     GameFinished,
+}
+
+impl DomainResponseKind {
+    /// Returns the stable lowercase API name.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::MoveApplied => "move_applied",
+            Self::PlayerPassed => "player_passed",
+            Self::GameFinished => "game_finished",
+        }
+    }
 }
 
 /// Human-readable response summary.

@@ -3,7 +3,7 @@
 use crate::command::{PyPassCommand, PyPlaceCommand};
 use crate::config::GameConfig;
 use crate::conversion::{map_domain_error, parse_player_id};
-use crate::result::GameResult;
+use crate::result::{GameResult, LegalMove};
 use crate::state::GameState;
 use crate::types::{PlayerColor, ScoringMode};
 use pyo3::prelude::*;
@@ -44,12 +44,12 @@ impl BlocusEngine {
         state: &GameState,
         player_id: &str,
         color: &PlayerColor,
-    ) -> PyResult<Vec<()>> {
+    ) -> PyResult<Vec<LegalMove>> {
         let player_id = parse_player_id(player_id, "player_id")?;
 
         self.inner
             .get_valid_moves(state.as_core(), player_id, color.as_core())
-            .map(|_moves| Vec::new())
+            .map(|moves| moves.into_iter().map(LegalMove::from_core).collect())
             .map_err(map_domain_error)
     }
 

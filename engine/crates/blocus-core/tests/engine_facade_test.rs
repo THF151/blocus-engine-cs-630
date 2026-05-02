@@ -1,7 +1,7 @@
 use blocus_core::{
-    BlocusEngine, BoardMask, BoardState, Command, CommandId, DomainError, EngineError, GameConfig,
-    GameMode, GameStatus, PassCommand, PieceId, PlayerColor, PlayerId, PlayerSlots, ScoringMode,
-    StateSchemaVersion, StateVersion, TurnOrder, TurnState, ZobristHash,
+    BlocusEngine, BoardMask, BoardState, Command, CommandId, DomainError, GameConfig, GameMode,
+    GameStatus, PassCommand, PieceId, PlayerColor, PlayerId, PlayerSlots, RuleViolation,
+    ScoringMode, StateSchemaVersion, StateVersion, TurnOrder, TurnState, ZobristHash,
 };
 use uuid::Uuid;
 
@@ -188,7 +188,7 @@ fn initialize_game_builds_empty_four_player_state_with_custom_turn_order() {
 }
 
 #[test]
-fn apply_pass_returns_controlled_placeholder_error_until_pass_rules_exist() {
+fn apply_pass_rejects_pass_while_a_legal_move_exists() {
     let engine = BlocusEngine::new();
     let state = engine.initialize_game(two_player_config());
 
@@ -201,7 +201,9 @@ fn apply_pass_returns_controlled_placeholder_error_until_pass_rules_exist() {
 
     assert_eq!(
         engine.apply(&state, command),
-        Err(DomainError::from(EngineError::InvariantViolation))
+        Err(DomainError::from(
+            blocus_core::RuleViolation::PassNotAllowedBecauseMoveExists
+        ))
     );
 }
 
@@ -281,13 +283,13 @@ fn has_any_valid_move_returns_real_boolean() {
 }
 
 #[test]
-fn score_game_returns_controlled_placeholder_error_until_scoring_exists() {
+fn score_game_rejects_unfinished_game() {
     let engine = BlocusEngine::new();
     let state = engine.initialize_game(two_player_config());
 
     assert_eq!(
         engine.score_game(&state, ScoringMode::Basic),
-        Err(DomainError::from(EngineError::InvariantViolation))
+        Err(DomainError::from(RuleViolation::GameNotFinished))
     );
 }
 

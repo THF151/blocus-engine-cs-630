@@ -8,8 +8,8 @@ use crate::pieces::{PieceInventory, PieceRepository};
 use crate::{
     BoardState, Command, DomainError, DomainEvent, DomainEventKind, DomainResponse,
     DomainResponseKind, EngineError, GameConfig, GameResult, GameState, GameStatus, LegalMove,
-    PLAYER_COLOR_COUNT, PlaceCommand, PlayerColor, PlayerId, ScoringMode, StateSchemaVersion,
-    StateVersion, ZobristHash, standard_repository,
+    PLAYER_COLOR_COUNT, PassCommand, PlaceCommand, PlayerColor, PlayerId, RuleViolation,
+    ScoringMode, StateSchemaVersion, StateVersion, ZobristHash, standard_repository,
 };
 
 /// Pure Rust Blocus engine facade.
@@ -66,11 +66,11 @@ impl BlocusEngine {
     /// # Errors
     ///
     /// Returns a typed domain error if the command is invalid for the current
-    /// state or if the command kind is not implemented yet.
+    /// state.
     pub fn apply(&self, state: &GameState, command: Command) -> Result<GameResult, DomainError> {
         match command {
             Command::Place(command) => apply_place_command(state, command, self.piece_repository()),
-            Command::Pass(_command) => Err(EngineError::InvariantViolation.into()),
+            Command::Pass(command) => apply_pass_command(state, command, self.piece_repository()),
         }
     }
 
@@ -124,13 +124,17 @@ impl BlocusEngine {
     ///
     /// # Errors
     ///
-    /// Currently returns [`EngineError::InvariantViolation`] because scoring has
-    /// not been implemented yet.
+    /// Returns [`RuleViolation::GameNotFinished`] when called before the game
+    /// has finished. Final score calculation itself is not implemented yet.
     pub fn score_game(
         &self,
-        _state: &GameState,
+        state: &GameState,
         _scoring: ScoringMode,
     ) -> Result<crate::ScoreBoard, DomainError> {
+        if state.status != GameStatus::Finished {
+            return Err(RuleViolation::GameNotFinished.into());
+        }
+
         Err(EngineError::InvariantViolation.into())
     }
 }
@@ -144,7 +148,7 @@ impl Default for BlocusEngine {
 fn apply_place_command(
     state: &GameState,
     command: PlaceCommand,
-    repository: &PieceRepository,
+    repository: &'static PieceRepository,
 ) -> Result<GameResult, DomainError> {
     let placement = crate::validate_place_command(state, command, repository)?;
 
@@ -153,16 +157,19 @@ fn apply_place_command(
     next_state.board.place_mask(command.color, placement.mask());
     next_state.inventories[command.color.index()].mark_used(command.piece_id);
 
-    if next_state
+    let turn_advanced = next_state
         .turn
         .advance(next_state.turn_order, next_state.player_slots)
-        .is_none()
-    {
+        .is_some();
+
+    if !turn_advanced || !any_unpassed_color_has_valid_move(&next_state, repository) {
         next_state.status = GameStatus::Finished;
     }
 
     next_state.version = next_state.version.saturating_next();
     next_state.hash = ZobristHash::ZERO;
+
+    let is_finished = next_state.status == GameStatus::Finished;
 
     let mut events = Vec::with_capacity(2);
     events.push(DomainEvent {
@@ -171,7 +178,7 @@ fn apply_place_command(
         version: next_state.version,
     });
 
-    if next_state.status == GameStatus::Finished {
+    if is_finished {
         events.push(DomainEvent {
             kind: DomainEventKind::GameFinished,
             game_id: next_state.game_id,
@@ -189,10 +196,143 @@ fn apply_place_command(
         next_state,
         events,
         response: DomainResponse {
-            kind: DomainResponseKind::MoveApplied,
-            message: "move applied".to_owned(),
+            kind: if is_finished {
+                DomainResponseKind::GameFinished
+            } else {
+                DomainResponseKind::MoveApplied
+            },
+            message: if is_finished {
+                "game finished".to_owned()
+            } else {
+                "move applied".to_owned()
+            },
         },
     })
+}
+
+fn apply_pass_command(
+    state: &GameState,
+    command: PassCommand,
+    repository: &'static PieceRepository,
+) -> Result<GameResult, DomainError> {
+    validate_pass_command(state, command, repository)?;
+
+    let mut next_state = state.clone();
+    next_state.turn.mark_passed(command.color);
+
+    let turn_advanced = next_state
+        .turn
+        .advance(next_state.turn_order, next_state.player_slots)
+        .is_some();
+
+    if !turn_advanced || !any_unpassed_color_has_valid_move(&next_state, repository) {
+        next_state.status = GameStatus::Finished;
+    }
+
+    next_state.version = next_state.version.saturating_next();
+    next_state.hash = ZobristHash::ZERO;
+
+    let is_finished = next_state.status == GameStatus::Finished;
+
+    let mut events = Vec::with_capacity(2);
+    events.push(DomainEvent {
+        kind: DomainEventKind::PlayerPassed,
+        game_id: next_state.game_id,
+        version: next_state.version,
+    });
+
+    if is_finished {
+        events.push(DomainEvent {
+            kind: DomainEventKind::GameFinished,
+            game_id: next_state.game_id,
+            version: next_state.version,
+        });
+    } else {
+        events.push(DomainEvent {
+            kind: DomainEventKind::TurnAdvanced,
+            game_id: next_state.game_id,
+            version: next_state.version,
+        });
+    }
+
+    Ok(GameResult {
+        next_state,
+        events,
+        response: DomainResponse {
+            kind: if is_finished {
+                DomainResponseKind::GameFinished
+            } else {
+                DomainResponseKind::PlayerPassed
+            },
+            message: if is_finished {
+                "game finished".to_owned()
+            } else {
+                "player passed".to_owned()
+            },
+        },
+    })
+}
+
+fn validate_pass_command(
+    state: &GameState,
+    command: PassCommand,
+    repository: &'static PieceRepository,
+) -> Result<(), DomainError> {
+    if state.status != GameStatus::InProgress {
+        return Err(RuleViolation::GameAlreadyFinished.into());
+    }
+
+    if command.game_id != state.game_id {
+        return Err(crate::InputError::GameIdMismatch.into());
+    }
+
+    if !state
+        .player_slots
+        .can_control_color(command.player_id, command.color)
+    {
+        return Err(RuleViolation::PlayerDoesNotControlColor.into());
+    }
+
+    if state.turn.current_color() != command.color {
+        return Err(RuleViolation::WrongPlayerTurn.into());
+    }
+
+    if crate::movegen::has_any_valid_move(state, repository, command.player_id, command.color)? {
+        return Err(RuleViolation::PassNotAllowedBecauseMoveExists.into());
+    }
+
+    Ok(())
+}
+
+fn any_unpassed_color_has_valid_move(
+    state: &GameState,
+    repository: &'static PieceRepository,
+) -> bool {
+    for color in PlayerColor::ALL {
+        if state.turn.is_passed(color) {
+            continue;
+        }
+
+        let probe_turn = crate::TurnState::from_parts(
+            color,
+            state.turn.passed_mask(),
+            state.turn.shared_color_turn_index(),
+        );
+
+        let Some(player_id) = probe_turn.current_player(state.player_slots) else {
+            continue;
+        };
+
+        let mut probe = state.clone();
+        probe.turn = probe_turn;
+
+        if crate::movegen::has_any_valid_move(&probe, repository, player_id, color).unwrap_or(false)
+        {
+            return true;
+        }
+    }
+
+    false
 }
 
 /// Returns true when the native engine crate is linked and callable.
