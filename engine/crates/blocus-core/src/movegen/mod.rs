@@ -243,6 +243,23 @@ pub fn get_valid_moves(
     Ok(legal_moves_iter(state, repository, player_id, color)?.collect())
 }
 
+/// Collects all legal moves for one specific piece.
+///
+/// # Errors
+///
+/// Propagates iterator-construction errors.
+pub fn get_valid_moves_for_piece(
+    state: &GameState,
+    repository: &'static PieceRepository,
+    player_id: PlayerId,
+    color: PlayerColor,
+    piece_id: PieceId,
+) -> Result<Vec<LegalMove>, DomainError> {
+    Ok(legal_moves_iter(state, repository, player_id, color)?
+        .filter(|legal_move| legal_move.piece_id == piece_id)
+        .collect())
+}
+
 /// Returns whether at least one legal move exists.
 ///
 /// # Errors
@@ -257,4 +274,20 @@ pub fn has_any_valid_move(
     Ok(legal_moves_iter(state, repository, player_id, color)?
         .next()
         .is_some())
+}
+
+/// Returns whether at least one legal move exists for one specific piece.
+///
+/// # Errors
+///
+/// Propagates iterator-construction errors.
+pub fn has_any_valid_move_for_piece(
+    state: &GameState,
+    repository: &'static PieceRepository,
+    player_id: PlayerId,
+    color: PlayerColor,
+    piece_id: PieceId,
+) -> Result<bool, DomainError> {
+    Ok(legal_moves_iter(state, repository, player_id, color)?
+        .any(|legal_move| legal_move.piece_id == piece_id))
 }

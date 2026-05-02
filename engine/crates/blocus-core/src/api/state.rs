@@ -2,8 +2,8 @@
 
 use crate::pieces::PieceInventory;
 use crate::{
-    BoardState, GameId, GameMode, PLAYER_COLOR_COUNT, PieceId, PlayerColor, PlayerSlots,
-    StateVersion, TurnOrder, TurnState, ZobristHash,
+    BoardState, GameId, GameMode, PIECE_COUNT, PLAYER_COLOR_COUNT, PieceId, PlayerColor,
+    PlayerSlots, StateVersion, TurnOrder, TurnState, ZobristHash,
 };
 
 /// Current serialized state schema version.
@@ -158,6 +158,35 @@ pub struct GameState {
     pub version: StateVersion,
     /// Semantic state hash placeholder.
     pub hash: ZobristHash,
+}
+
+impl GameState {
+    /// Returns used piece ids for a color in ascending canonical piece order.
+    #[must_use]
+    pub fn used_piece_ids(&self, color: PlayerColor) -> Vec<PieceId> {
+        piece_ids_matching_inventory(self.inventories[color.index()], true)
+    }
+
+    /// Returns available piece ids for a color in ascending canonical piece order.
+    #[must_use]
+    pub fn available_piece_ids(&self, color: PlayerColor) -> Vec<PieceId> {
+        piece_ids_matching_inventory(self.inventories[color.index()], false)
+    }
+}
+
+fn piece_ids_matching_inventory(inventory: PieceInventory, used: bool) -> Vec<PieceId> {
+    let mut piece_ids = Vec::with_capacity(usize::from(PIECE_COUNT));
+
+    for raw_piece_id in 0..PIECE_COUNT {
+        let piece_id = PieceId::try_new(raw_piece_id)
+            .unwrap_or_else(|_| unreachable!("piece id in 0..PIECE_COUNT is valid"));
+
+        if inventory.is_used(piece_id) == used {
+            piece_ids.push(piece_id);
+        }
+    }
+
+    piece_ids
 }
 
 const LAST_PIECE_SLOT_BITS: u32 = 5;

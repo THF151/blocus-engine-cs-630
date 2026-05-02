@@ -4,12 +4,12 @@
 //! move generation, scoring, and hashing are delegated to focused modules.
 
 use crate::api::state::LastPieceByColor;
-use crate::pieces::{PieceInventory, PieceRepository};
+use crate::pieces::{CanonicalPiece, PieceInventory, PieceRepository};
 use crate::{
     BoardMask, BoardState, Command, DomainError, DomainEvent, DomainEventKind, DomainResponse,
     DomainResponseKind, EngineError, GameConfig, GameResult, GameState, GameStatus, LegalMove,
-    PLAYER_COLOR_COUNT, PassCommand, PlaceCommand, PlayerColor, PlayerId, RuleViolation,
-    ScoringMode, StateSchemaVersion, StateVersion, standard_repository,
+    PIECE_COUNT, PLAYER_COLOR_COUNT, PassCommand, PieceId, PlaceCommand, PlayerColor, PlayerId,
+    RuleViolation, ScoringMode, StateSchemaVersion, StateVersion, standard_repository,
 };
 
 /// Pure Rust Blocus engine facade.
@@ -37,6 +37,18 @@ impl BlocusEngine {
     #[must_use]
     pub const fn piece_repository(self) -> &'static PieceRepository {
         self.pieces
+    }
+
+    /// Returns all canonical Blokus pieces from the shared repository.
+    #[must_use]
+    pub const fn pieces(self) -> &'static [CanonicalPiece; PIECE_COUNT as usize] {
+        self.pieces.pieces()
+    }
+
+    /// Returns one canonical piece by id.
+    #[must_use]
+    pub const fn piece(self, piece_id: PieceId) -> &'static CanonicalPiece {
+        self.pieces.piece(piece_id)
     }
 
     /// Initializes a new game from a validated configuration.
@@ -109,6 +121,27 @@ impl BlocusEngine {
         crate::movegen::get_valid_moves(state, self.piece_repository(), player, color)
     }
 
+    /// Materializes all valid moves for a specific player/color/piece.
+    ///
+    /// # Errors
+    ///
+    /// Propagates move-iterator construction errors.
+    pub fn get_valid_moves_for_piece(
+        &self,
+        state: &GameState,
+        player: PlayerId,
+        color: PlayerColor,
+        piece_id: PieceId,
+    ) -> Result<Vec<LegalMove>, DomainError> {
+        crate::movegen::get_valid_moves_for_piece(
+            state,
+            self.piece_repository(),
+            player,
+            color,
+            piece_id,
+        )
+    }
+
     /// Returns whether a player/color has any valid move.
     ///
     /// # Errors
@@ -121,6 +154,27 @@ impl BlocusEngine {
         color: PlayerColor,
     ) -> Result<bool, DomainError> {
         crate::movegen::has_any_valid_move(state, self.piece_repository(), player, color)
+    }
+
+    /// Returns whether a player/color has any valid move for a specific piece.
+    ///
+    /// # Errors
+    ///
+    /// Propagates move-iterator construction errors.
+    pub fn has_any_valid_move_for_piece(
+        &self,
+        state: &GameState,
+        player: PlayerId,
+        color: PlayerColor,
+        piece_id: PieceId,
+    ) -> Result<bool, DomainError> {
+        crate::movegen::has_any_valid_move_for_piece(
+            state,
+            self.piece_repository(),
+            player,
+            color,
+            piece_id,
+        )
     }
 
     /// Scores a finished game.

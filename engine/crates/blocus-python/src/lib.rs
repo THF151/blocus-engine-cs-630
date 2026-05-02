@@ -3,6 +3,7 @@ mod config;
 mod conversion;
 mod engine;
 mod errors;
+mod pieces;
 mod result;
 mod state;
 mod types;
@@ -25,12 +26,15 @@ fn blocus_engine(module: &Bound<'_, PyModule>) -> PyResult<()> {
 
     command::register(module)?;
     result::register(module)?;
+    pieces::register(module)?;
 
     module.add_class::<config::GameMode>()?;
     module.add_class::<config::SharedColorTurn>()?;
     module.add_class::<config::PlayerSlots>()?;
     module.add_class::<config::GameConfig>()?;
 
+    module.add_class::<state::BoardCell>()?;
+    module.add_class::<state::InventorySummary>()?;
     module.add_class::<state::GameState>()?;
     module.add_class::<engine::BlocusEngine>()?;
 

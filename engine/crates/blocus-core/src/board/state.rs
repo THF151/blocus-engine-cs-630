@@ -1,6 +1,6 @@
 //! Board occupancy state.
 
-use crate::board::BoardMask;
+use crate::board::{BoardIndex, BoardMask};
 use crate::color::{PLAYER_COLOR_COUNT, PlayerColor};
 
 /// Occupancy state for all four Blokus colors.
@@ -38,6 +38,12 @@ impl BoardState {
         self.occupied_by_color[color.index()]
     }
 
+    /// Returns the number of occupied cells for one color.
+    #[must_use]
+    pub const fn occupied_count(self, color: PlayerColor) -> u32 {
+        self.occupied(color).count()
+    }
+
     /// Returns a mutable occupancy mask for one color.
     #[must_use]
     pub fn occupied_mut(&mut self, color: PlayerColor) -> &mut BoardMask {
@@ -62,6 +68,37 @@ impl BoardState {
         while index < PLAYER_COLOR_COUNT {
             result = result.union(self.occupied_by_color[index]);
             index += 1;
+        }
+
+        result
+    }
+
+    /// Returns the occupying color at an index, if any.
+    #[must_use]
+    pub fn color_at(self, index: BoardIndex) -> Option<PlayerColor> {
+        PlayerColor::ALL
+            .into_iter()
+            .find(|color| self.occupied(*color).contains(index))
+    }
+
+    /// Returns occupied cells for one color in ascending padded bit-index order.
+    #[must_use]
+    pub fn occupied_cells(self, color: PlayerColor) -> Vec<BoardIndex> {
+        self.occupied(color).indices()
+    }
+
+    /// Returns all occupied cells with their colors in stable color order and
+    /// ascending padded bit-index order within each color.
+    #[must_use]
+    pub fn occupied_cells_all(self) -> Vec<(PlayerColor, BoardIndex)> {
+        let total_count = usize::try_from(self.occupied_all().count())
+            .unwrap_or_else(|_| unreachable!("board cell count always fits in usize"));
+        let mut result = Vec::with_capacity(total_count);
+
+        for color in PlayerColor::ALL {
+            for index in self.occupied_cells(color) {
+                result.push((color, index));
+            }
         }
 
         result

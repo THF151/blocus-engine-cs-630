@@ -3,6 +3,8 @@
 use crate::command::{PyPassCommand, PyPlaceCommand};
 use crate::config::GameConfig;
 use crate::conversion::{map_domain_error, parse_player_id};
+use crate::errors::input_error;
+use crate::pieces::Piece;
 use crate::result::{GameResult, LegalMove, ScoreBoard};
 use crate::state::GameState;
 use crate::types::{PlayerColor, ScoringMode};
@@ -39,6 +41,24 @@ impl BlocusEngine {
             .map_err(map_domain_error)
     }
 
+    fn pieces(&self) -> Vec<Piece> {
+        self.inner
+            .piece_repository()
+            .pieces()
+            .iter()
+            .copied()
+            .map(Piece::from_core)
+            .collect()
+    }
+
+    fn piece(&self, py: Python<'_>, piece_id: u8) -> PyResult<Piece> {
+        let piece_id = parse_piece_id(py, piece_id)?;
+
+        Ok(Piece::from_core(
+            *self.inner.piece_repository().piece(piece_id),
+        ))
+    }
+
     fn get_valid_moves(
         &self,
         state: &GameState,
@@ -53,6 +73,23 @@ impl BlocusEngine {
             .map_err(map_domain_error)
     }
 
+    fn get_valid_moves_for_piece(
+        &self,
+        py: Python<'_>,
+        state: &GameState,
+        player_id: &str,
+        color: &PlayerColor,
+        piece_id: u8,
+    ) -> PyResult<Vec<LegalMove>> {
+        let player_id = parse_player_id(player_id, "player_id")?;
+        let piece_id = parse_piece_id(py, piece_id)?;
+
+        self.inner
+            .get_valid_moves_for_piece(state.as_core(), player_id, color.as_core(), piece_id)
+            .map(|moves| moves.into_iter().map(LegalMove::from_core).collect())
+            .map_err(map_domain_error)
+    }
+
     fn has_any_valid_move(
         &self,
         state: &GameState,
@@ -63,6 +100,22 @@ impl BlocusEngine {
 
         self.inner
             .has_any_valid_move(state.as_core(), player_id, color.as_core())
+            .map_err(map_domain_error)
+    }
+
+    fn has_any_valid_move_for_piece(
+        &self,
+        py: Python<'_>,
+        state: &GameState,
+        player_id: &str,
+        color: &PlayerColor,
+        piece_id: u8,
+    ) -> PyResult<bool> {
+        let player_id = parse_player_id(player_id, "player_id")?;
+        let piece_id = parse_piece_id(py, piece_id)?;
+
+        self.inner
+            .has_any_valid_move_for_piece(state.as_core(), player_id, color.as_core(), piece_id)
             .map_err(map_domain_error)
     }
 
@@ -90,4 +143,9 @@ fn parse_command(command: &pyo3::Bound<'_, pyo3::PyAny>) -> PyResult<blocus_core
     Err(map_domain_error(
         blocus_core::EngineError::InvariantViolation.into(),
     ))
+}
+
+fn parse_piece_id(py: Python<'_>, value: u8) -> PyResult<blocus_core::PieceId> {
+    blocus_core::PieceId::try_new(value)
+        .map_err(|_| input_error(py, blocus_core::InputError::UnknownPiece))
 }

@@ -42,30 +42,6 @@ SYMBOL_BY_COLOR = {
     "green": "G",
 }
 
-PIECE_SHAPES: dict[int, list[tuple[int, int]]] = {
-    0: [(0, 0)],
-    1: [(0, 0), (0, 1)],
-    2: [(0, 0), (0, 1), (0, 2)],
-    3: [(0, 0), (1, 0), (1, 1)],
-    4: [(0, 0), (0, 1), (0, 2), (0, 3)],
-    5: [(0, 0), (0, 1), (1, 0), (1, 1)],
-    6: [(0, 0), (0, 1), (0, 2), (1, 1)],
-    7: [(0, 0), (1, 0), (2, 0), (2, 1)],
-    8: [(0, 0), (0, 1), (1, 1), (1, 2)],
-    9: [(0, 1), (1, 0), (1, 1), (1, 2), (2, 2)],
-    10: [(0, 0), (0, 1), (0, 2), (0, 3), (0, 4)],
-    11: [(0, 0), (1, 0), (2, 0), (3, 0), (3, 1)],
-    12: [(0, 1), (1, 1), (2, 0), (2, 1), (3, 0)],
-    13: [(0, 0), (0, 1), (1, 0), (1, 1), (2, 0)],
-    14: [(0, 0), (0, 1), (0, 2), (1, 1), (2, 1)],
-    15: [(0, 0), (0, 2), (1, 0), (1, 1), (1, 2)],
-    16: [(0, 0), (1, 0), (2, 0), (2, 1), (2, 2)],
-    17: [(0, 0), (1, 0), (1, 1), (2, 1), (2, 2)],
-    18: [(0, 1), (1, 0), (1, 1), (1, 2), (2, 1)],
-    19: [(0, 0), (1, 0), (2, 0), (3, 0), (2, 1)],
-    20: [(0, 0), (0, 1), (1, 1), (2, 1), (2, 2)],
-}
-
 
 @dataclass
 class PerfStats:
@@ -77,7 +53,6 @@ class PerfStats:
     total_runtime_seconds: float = 0.0
     total_movegen_seconds: float = 0.0
     total_apply_seconds: float = 0.0
-    total_visualization_seconds: float = 0.0
 
     slowest_turn_seconds: float = 0.0
     slowest_turn_number: int = 0
@@ -116,115 +91,38 @@ def controller_for_color(color: be.PlayerColor) -> str:
     return PLAYER_TWO
 
 
-def normalize(cells: list[tuple[int, int]]) -> list[tuple[int, int]]:
-    min_row = min(row for row, _ in cells)
-    min_col = min(col for _, col in cells)
-    return sorted((row - min_row, col - min_col) for row, col in cells)
-
-
-def transform(
-    cells: list[tuple[int, int]],
-    rotation: int,
-    flip_horizontal: bool,
-) -> list[tuple[int, int]]:
-    normalized = normalize(cells)
-    width = max(col for _, col in normalized) + 1
-    height = max(row for row, _ in normalized) + 1
-
-    transformed: list[tuple[int, int]] = []
-
-    for row, col in normalized:
-        if flip_horizontal:
-            col = width - 1 - col
-
-        if rotation == 0:
-            next_row, next_col = row, col
-        elif rotation == 90:
-            next_row, next_col = col, height - 1 - row
-        elif rotation == 180:
-            next_row, next_col = height - 1 - row, width - 1 - col
-        elif rotation == 270:
-            next_row, next_col = width - 1 - col, row
-        else:
-            raise ValueError(f"unsupported rotation: {rotation}")
-
-        transformed.append((next_row, next_col))
-
-    return normalize(transformed)
-
-
-def unique_orientations(piece_id: int) -> list[list[tuple[int, int]]]:
-    base = PIECE_SHAPES[piece_id]
-    orientations: list[list[tuple[int, int]]] = []
-
-    for flip_horizontal in (False, True):
-        for rotation in (0, 90, 180, 270):
-            orientation = transform(base, rotation, flip_horizontal)
-
-            if orientation not in orientations:
-                orientations.append(orientation)
-
-    return orientations
-
-
-def piece_cells(
-    piece_id: int,
-    orientation_id: int,
-    anchor_row: int,
-    anchor_col: int,
-) -> list[tuple[int, int]]:
-    orientations = unique_orientations(piece_id)
-
-    if orientation_id >= len(orientations):
-        raise ValueError(
-            f"piece {piece_id} has no orientation {orientation_id}; "
-            f"available orientations: {len(orientations)}"
+def print_all_pieces(engine: be.BlocusEngine) -> None:
+    print("\nCanonical Pieces (Orientation 0):")
+    for piece in engine.pieces():
+        print(
+            f"\n  {piece.id:2d}: {piece.name} "
+            f"({piece.square_count} sq, {piece.orientation_count} ori)"
         )
-
-    return [
-        (anchor_row + local_row, anchor_col + local_col)
-        for local_row, local_col in orientations[orientation_id]
-    ]
-
-
-def empty_visual_board() -> list[list[str | None]]:
-    return [[None for _ in range(BOARD_SIZE)] for _ in range(BOARD_SIZE)]
+        base = piece.orientations[0]
+        grid = [[" " for _ in range(base.width)] for _ in range(base.height)]
+        for r, c in base.cells:
+            grid[r][c] = "█"
+        for row in grid:
+            print("      " + "".join(row))
 
 
-def record_move_on_visual_board(
-    board: list[list[str | None]],
-    color: be.PlayerColor,
-    move: be.LegalMove,
-) -> None:
-    color_value = color.value
-
-    for row, col in piece_cells(move.piece_id, move.orientation_id, move.row, move.col):
-        if not (0 <= row < BOARD_SIZE and 0 <= col < BOARD_SIZE):
-            raise RuntimeError(f"visualization bug: cell ({row}, {col}) is outside the board")
-
-        if board[row][col] is not None:
-            raise RuntimeError(
-                f"visualization bug: cell ({row}, {col}) is already occupied by {board[row][col]}"
-            )
-
-        board[row][col] = color_value
-
-
-def colored_cell(color_value: str | None) -> str:
-    if color_value is None:
+def colored_cell_from_color(color: be.PlayerColor | None) -> str:
+    if color is None:
         return " ·"
 
+    color_value = color.value
     ansi = ANSI_BY_COLOR[color_value]
     symbol = SYMBOL_BY_COLOR[color_value]
     return f" {ansi}{BOLD}{symbol}{RESET}"
 
 
-def print_final_board(board: list[list[str | None]]) -> None:
+def print_final_state_board(state: be.GameState) -> None:
     print("\nFinal board")
     print("   " + " ".join(f"{col:2d}" for col in range(BOARD_SIZE)))
 
-    for row_index, row in enumerate(board):
-        rendered_cells = "".join(colored_cell(color_value) for color_value in row)
+    matrix = state.board_matrix()
+    for row_index, row in enumerate(matrix):
+        rendered_cells = "".join(colored_cell_from_color(color) for color in row)
         print(f"{row_index:2d} {rendered_cells}")
 
     print("\nLegend")
@@ -280,7 +178,6 @@ def print_performance_summary(stats: PerfStats) -> None:
     print(f"  avg move-generation/turn:   {format_seconds(average_movegen_seconds)}")
     print(f"  total apply time:           {format_seconds(stats.total_apply_seconds)}")
     print(f"  avg apply/turn:             {format_seconds(average_apply_seconds)}")
-    print(f"  visualization update time:  {format_seconds(stats.total_visualization_seconds)}")
     print()
     print(f"  total generated moves:      {stats.generated_move_count}")
     print(f"  peak legal moves:           {stats.peak_legal_moves}")
@@ -298,7 +195,8 @@ def main() -> None:
     print(f"Engine linked: {be.engine_health()}")
 
     engine = be.BlocusEngine()
-    visual_board = empty_visual_board()
+    print_all_pieces(engine)
+
     stats = PerfStats()
 
     config = be.GameConfig.two_player(
@@ -366,12 +264,7 @@ def main() -> None:
             result = engine.apply(state, command)
             apply_seconds = time.perf_counter() - apply_start
 
-            visualization_start = time.perf_counter()
-            record_move_on_visual_board(visual_board, color, move)
-            visualization_seconds = time.perf_counter() - visualization_start
-
             stats.total_apply_seconds += apply_seconds
-            stats.total_visualization_seconds += visualization_seconds
             stats.move_count += 1
 
             print(f"  apply={format_seconds(apply_seconds)}")
@@ -422,7 +315,7 @@ def main() -> None:
     print(f"  total passes:        {stats.pass_count}")
     print(f"  final version:       {state.version}")
 
-    print_final_board(visual_board)
+    print_final_state_board(state)
 
     basic_scoreboard = engine.score_game(state, be.ScoringMode.BASIC)
 

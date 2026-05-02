@@ -1,8 +1,312 @@
 use crate::config::{GameMode, PlayerSlots};
-use crate::conversion::{map_domain_error, map_input_error, parse_uuid};
+use crate::conversion::{map_input_error, parse_uuid};
 use crate::types::{GameStatus, PlayerColor, ScoringMode};
+use pyo3::class::basic::CompareOp;
 use pyo3::prelude::*;
 use serde_json::{Value, json};
+
+#[pyclass(name = "BoardCell", frozen, skip_from_py_object)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+pub struct BoardCell {
+    row: u8,
+    col: u8,
+    board_index: u16,
+    color: PlayerColor,
+}
+
+impl BoardCell {
+    fn from_index(color: PlayerColor, index: blocus_core::BoardIndex) -> Self {
+        Self {
+            row: index.row(),
+            col: index.col(),
+            board_index: index.bit_index(),
+            color,
+        }
+    }
+}
+
+#[pymethods]
+#[allow(clippy::trivially_copy_pass_by_ref)]
+impl BoardCell {
+    #[getter]
+    fn row(&self) -> u8 {
+        self.row
+    }
+
+    #[getter]
+    fn col(&self) -> u8 {
+        self.col
+    }
+
+    #[getter]
+    fn board_index(&self) -> u16 {
+        self.board_index
+    }
+
+    #[getter]
+    fn color(&self) -> PlayerColor {
+        self.color
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "BoardCell(row={}, col={}, board_index={}, color={})",
+            self.row,
+            self.col,
+            self.board_index,
+            self.color.repr()
+        )
+    }
+
+    fn __richcmp__(&self, other: &Self, op: CompareOp) -> bool {
+        match op {
+            CompareOp::Eq => self == other,
+            CompareOp::Ne => self != other,
+            _ => false,
+        }
+    }
+}
+
+#[pyclass(name = "BoardSnapshot", frozen, skip_from_py_object)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct BoardSnapshot {
+    blue: Vec<BoardCell>,
+    yellow: Vec<BoardCell>,
+    red: Vec<BoardCell>,
+    green: Vec<BoardCell>,
+}
+
+impl BoardSnapshot {
+    fn from_board(board: &blocus_core::BoardState) -> Self {
+        Self {
+            blue: cells_for_color(board, blocus_core::PlayerColor::Blue),
+            yellow: cells_for_color(board, blocus_core::PlayerColor::Yellow),
+            red: cells_for_color(board, blocus_core::PlayerColor::Red),
+            green: cells_for_color(board, blocus_core::PlayerColor::Green),
+        }
+    }
+}
+
+#[pymethods]
+impl BoardSnapshot {
+    #[getter]
+    fn blue(&self) -> Vec<BoardCell> {
+        self.blue.clone()
+    }
+
+    #[getter]
+    fn yellow(&self) -> Vec<BoardCell> {
+        self.yellow.clone()
+    }
+
+    #[getter]
+    fn red(&self) -> Vec<BoardCell> {
+        self.red.clone()
+    }
+
+    #[getter]
+    fn green(&self) -> Vec<BoardCell> {
+        self.green.clone()
+    }
+
+    #[getter]
+    fn occupied(&self) -> Vec<BoardCell> {
+        self.blue
+            .iter()
+            .chain(self.yellow.iter())
+            .chain(self.red.iter())
+            .chain(self.green.iter())
+            .copied()
+            .collect()
+    }
+
+    #[getter]
+    fn occupied_count(&self) -> usize {
+        self.blue.len() + self.yellow.len() + self.red.len() + self.green.len()
+    }
+
+    fn cells_for_color(&self, color: PlayerColor) -> Vec<BoardCell> {
+        match color.as_core() {
+            blocus_core::PlayerColor::Blue => self.blue(),
+            blocus_core::PlayerColor::Yellow => self.yellow(),
+            blocus_core::PlayerColor::Red => self.red(),
+            blocus_core::PlayerColor::Green => self.green(),
+        }
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "BoardSnapshot(blue={}, yellow={}, red={}, green={})",
+            self.blue.len(),
+            self.yellow.len(),
+            self.red.len(),
+            self.green.len()
+        )
+    }
+
+    fn __richcmp__(&self, other: &Self, op: CompareOp) -> bool {
+        match op {
+            CompareOp::Eq => self == other,
+            CompareOp::Ne => self != other,
+            _ => false,
+        }
+    }
+}
+
+#[pyclass(name = "Piece", frozen, skip_from_py_object)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+pub struct Piece {
+    id: u8,
+    name: &'static str,
+    square_count: u8,
+    orientation_count: u8,
+}
+
+impl Piece {
+    fn from_core(piece: blocus_core::CanonicalPiece) -> Self {
+        Self {
+            id: piece.id().as_u8(),
+            name: piece.name(),
+            square_count: piece.square_count(),
+            orientation_count: piece.orientation_count(),
+        }
+    }
+}
+
+#[pymethods]
+#[allow(clippy::trivially_copy_pass_by_ref)]
+impl Piece {
+    #[getter]
+    fn id(&self) -> u8 {
+        self.id
+    }
+
+    #[getter]
+    fn name(&self) -> &'static str {
+        self.name
+    }
+
+    #[getter]
+    fn square_count(&self) -> u8 {
+        self.square_count
+    }
+
+    #[getter]
+    fn orientation_count(&self) -> u8 {
+        self.orientation_count
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "Piece(id={}, name='{}', square_count={}, orientation_count={})",
+            self.id, self.name, self.square_count, self.orientation_count
+        )
+    }
+
+    fn __richcmp__(&self, other: &Self, op: CompareOp) -> bool {
+        match op {
+            CompareOp::Eq => self == other,
+            CompareOp::Ne => self != other,
+            _ => false,
+        }
+    }
+}
+
+#[pyclass(name = "InventorySummary", frozen, skip_from_py_object)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct InventorySummary {
+    color: PlayerColor,
+    used_piece_ids: Vec<u16>,
+    available_piece_ids: Vec<u16>,
+    used_square_count: u16,
+    remaining_square_count: u16,
+}
+
+impl InventorySummary {
+    fn from_state(state: &blocus_core::GameState, color: blocus_core::PlayerColor) -> Self {
+        let used_piece_ids = used_piece_ids_for(state, color);
+        let available_piece_ids = available_piece_ids_for(state, color);
+
+        Self {
+            color: PlayerColor::from_core(color),
+            used_square_count: square_count_for_piece_ids(&used_piece_ids),
+            remaining_square_count: square_count_for_piece_ids(&available_piece_ids),
+            used_piece_ids,
+            available_piece_ids,
+        }
+    }
+}
+
+#[pymethods]
+impl InventorySummary {
+    #[getter]
+    fn color(&self) -> PlayerColor {
+        self.color
+    }
+
+    #[getter]
+    fn used_piece_ids(&self) -> Vec<u16> {
+        self.used_piece_ids.clone()
+    }
+
+    #[getter]
+    fn available_piece_ids(&self) -> Vec<u16> {
+        self.available_piece_ids.clone()
+    }
+
+    #[getter]
+    fn used_pieces(&self) -> Vec<Piece> {
+        piece_ids_to_pieces(&self.used_piece_ids)
+    }
+
+    #[getter]
+    fn available_pieces(&self) -> Vec<Piece> {
+        piece_ids_to_pieces(&self.available_piece_ids)
+    }
+
+    #[getter]
+    fn used_count(&self) -> usize {
+        self.used_piece_ids.len()
+    }
+
+    #[getter]
+    fn available_count(&self) -> usize {
+        self.available_piece_ids.len()
+    }
+
+    #[getter]
+    fn used_square_count(&self) -> u16 {
+        self.used_square_count
+    }
+
+    #[getter]
+    fn remaining_square_count(&self) -> u16 {
+        self.remaining_square_count
+    }
+
+    #[getter]
+    fn is_complete(&self) -> bool {
+        self.available_piece_ids.is_empty()
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "InventorySummary(color={}, used_count={}, available_count={}, remaining_square_count={})",
+            self.color.repr(),
+            self.used_piece_ids.len(),
+            self.available_piece_ids.len(),
+            self.remaining_square_count
+        )
+    }
+
+    fn __richcmp__(&self, other: &Self, op: CompareOp) -> bool {
+        match op {
+            CompareOp::Eq => self == other,
+            CompareOp::Ne => self != other,
+            _ => false,
+        }
+    }
+}
 
 #[pyclass(name = "GameState", frozen, skip_from_py_object)]
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
@@ -29,7 +333,7 @@ impl GameState {
         })?;
 
         let mut state = parse_game_state_json(&value)?;
-        blocus_core::validate_game_state(&state).map_err(map_domain_error)?;
+        blocus_core::validate_game_state(&state).map_err(map_state_json_validation_error)?;
         state.hash = blocus_core::compute_hash_full(&state);
 
         Ok(Self::from_core(state))
@@ -84,6 +388,11 @@ impl GameState {
     }
 
     #[getter]
+    fn board(&self) -> BoardSnapshot {
+        BoardSnapshot::from_board(&self.inner.board)
+    }
+
+    #[getter]
     fn turn_order(&self) -> Vec<PlayerColor> {
         self.inner
             .turn_order
@@ -101,6 +410,73 @@ impl GameState {
     #[getter]
     fn player_slots(&self) -> PlayerSlots {
         PlayerSlots::from_core(self.inner.player_slots)
+    }
+
+    fn cell(&self, row: u8, col: u8) -> PyResult<Option<PlayerColor>> {
+        let index = blocus_core::BoardIndex::from_row_col(row, col).map_err(map_input_error)?;
+        Ok(cell_color_at(&self.inner.board, index))
+    }
+
+    #[pyo3(signature = (color=None))]
+    fn occupied_cells(&self, color: Option<PlayerColor>) -> Vec<BoardCell> {
+        match color {
+            Some(color) => cells_for_color(&self.inner.board, color.as_core()),
+            None => BoardSnapshot::from_board(&self.inner.board).occupied(),
+        }
+    }
+
+    fn board_matrix(&self) -> Vec<Vec<Option<PlayerColor>>> {
+        (0..blocus_core::BOARD_SIZE)
+            .map(|row| {
+                (0..blocus_core::BOARD_SIZE)
+                    .map(|col| {
+                        let index = blocus_core::BoardIndex::from_row_col(row, col)
+                            .unwrap_or_else(|_| unreachable!("row and column are playable"));
+                        cell_color_at(&self.inner.board, index)
+                    })
+                    .collect()
+            })
+            .collect()
+    }
+
+    fn board_counts(&self) -> Vec<(PlayerColor, u32)> {
+        blocus_core::PlayerColor::ALL
+            .into_iter()
+            .map(|color| {
+                (
+                    PlayerColor::from_core(color),
+                    self.inner.board.occupied(color).count(),
+                )
+            })
+            .collect()
+    }
+
+    fn cells_for_color(&self, color: PlayerColor) -> Vec<BoardCell> {
+        cells_for_color(&self.inner.board, color.as_core())
+    }
+
+    fn used_piece_ids(&self, color: PlayerColor) -> Vec<u16> {
+        used_piece_ids_for(&self.inner, color.as_core())
+    }
+
+    fn available_piece_ids(&self, color: PlayerColor) -> Vec<u16> {
+        available_piece_ids_for(&self.inner, color.as_core())
+    }
+
+    fn used_pieces(&self, color: PlayerColor) -> Vec<Piece> {
+        piece_ids_to_pieces(&used_piece_ids_for(&self.inner, color.as_core()))
+    }
+
+    fn available_pieces(&self, color: PlayerColor) -> Vec<Piece> {
+        piece_ids_to_pieces(&available_piece_ids_for(&self.inner, color.as_core()))
+    }
+
+    fn inventory_summary(&self, color: PlayerColor) -> InventorySummary {
+        InventorySummary::from_state(&self.inner, color.as_core())
+    }
+
+    fn remaining_square_count(&self, color: PlayerColor) -> u16 {
+        square_count_for_piece_ids(&available_piece_ids_for(&self.inner, color.as_core()))
     }
 
     fn __repr__(&self) -> String {
@@ -221,7 +597,7 @@ fn parse_game_state_json(value: &Value) -> PyResult<blocus_core::GameState> {
     let turn =
         blocus_core::TurnState::from_parts(current_color, passed_mask, shared_color_turn_index);
 
-    let status = parse_game_status(required_str(value, "status")?);
+    let status = parse_game_status(required_str(value, "status")?)?;
     let version = blocus_core::StateVersion::new(required_u64(value, "version")?);
 
     Ok(blocus_core::GameState {
@@ -435,7 +811,9 @@ fn parse_mask(value: &Value) -> PyResult<blocus_core::BoardMask> {
             .map_err(|_| crate::conversion::invalid_game_config_error())?;
     }
 
-    Ok(blocus_core::BoardMask::from_lanes(parsed_lanes))
+    blocus_core::BoardMask::try_from_lanes(parsed_lanes).map_err(|_| {
+        crate::conversion::map_domain_error(blocus_core::EngineError::CorruptedState.into())
+    })
 }
 
 fn parse_inventories(
@@ -558,10 +936,11 @@ fn parse_scoring_mode(value: &str) -> PyResult<blocus_core::ScoringMode> {
     }
 }
 
-fn parse_game_status(value: &str) -> blocus_core::GameStatus {
+fn parse_game_status(value: &str) -> PyResult<blocus_core::GameStatus> {
     match value {
-        "finished" | "FINISHED" | "Finished" => blocus_core::GameStatus::Finished,
-        _ => blocus_core::GameStatus::InProgress,
+        "in_progress" | "IN_PROGRESS" | "InProgress" => Ok(blocus_core::GameStatus::InProgress),
+        "finished" | "FINISHED" | "Finished" => Ok(blocus_core::GameStatus::Finished),
+        _ => Err(crate::conversion::invalid_game_config_error()),
     }
 }
 
@@ -591,4 +970,100 @@ fn game_status_to_str(status: blocus_core::GameStatus) -> &'static str {
         blocus_core::GameStatus::Finished => "finished",
         _ => "unknown",
     }
+}
+
+fn cells_for_color(
+    board: &blocus_core::BoardState,
+    color: blocus_core::PlayerColor,
+) -> Vec<BoardCell> {
+    let py_color = PlayerColor::from_core(color);
+    let mask = board.occupied(color);
+    let mut cells = Vec::with_capacity(mask.count() as usize);
+
+    for row in 0..blocus_core::BOARD_SIZE {
+        for col in 0..blocus_core::BOARD_SIZE {
+            let index = blocus_core::BoardIndex::from_row_col(row, col)
+                .unwrap_or_else(|_| unreachable!("row and column are within playable board"));
+
+            if mask.contains(index) {
+                cells.push(BoardCell::from_index(py_color, index));
+            }
+        }
+    }
+
+    cells
+}
+
+fn cell_color_at(
+    board: &blocus_core::BoardState,
+    index: blocus_core::BoardIndex,
+) -> Option<PlayerColor> {
+    blocus_core::PlayerColor::ALL
+        .into_iter()
+        .find(|color| board.occupied(*color).contains(index))
+        .map(PlayerColor::from_core)
+}
+
+fn used_piece_ids_for(state: &blocus_core::GameState, color: blocus_core::PlayerColor) -> Vec<u16> {
+    let inventory = state.inventories[color.index()];
+
+    (0..blocus_core::PIECE_COUNT)
+        .filter(|piece_id| {
+            let piece = blocus_core::PieceId::try_new(*piece_id)
+                .unwrap_or_else(|_| unreachable!("piece id in official range is valid"));
+
+            inventory.is_used(piece)
+        })
+        .map(u16::from)
+        .collect()
+}
+
+fn available_piece_ids_for(
+    state: &blocus_core::GameState,
+    color: blocus_core::PlayerColor,
+) -> Vec<u16> {
+    let inventory = state.inventories[color.index()];
+
+    (0..blocus_core::PIECE_COUNT)
+        .filter(|piece_id| {
+            let piece = blocus_core::PieceId::try_new(*piece_id)
+                .unwrap_or_else(|_| unreachable!("piece id in official range is valid"));
+
+            inventory.is_available(piece)
+        })
+        .map(u16::from)
+        .collect()
+}
+
+fn piece_ids_to_pieces(piece_ids: &[u16]) -> Vec<Piece> {
+    piece_ids
+        .iter()
+        .copied()
+        .map(|raw_piece_id| {
+            let raw_piece_id = u8::try_from(raw_piece_id)
+                .unwrap_or_else(|_| unreachable!("piece id came from official range"));
+            let piece_id = blocus_core::PieceId::try_new(raw_piece_id)
+                .unwrap_or_else(|_| unreachable!("piece id came from official range"));
+            Piece::from_core(*blocus_core::standard_piece(piece_id))
+        })
+        .collect()
+}
+
+fn square_count_for_piece_ids(piece_ids: &[u16]) -> u16 {
+    piece_ids
+        .iter()
+        .copied()
+        .map(|raw_piece_id| {
+            let raw_piece_id = u8::try_from(raw_piece_id)
+                .unwrap_or_else(|_| unreachable!("piece id came from official range"));
+            let piece_id = blocus_core::PieceId::try_new(raw_piece_id)
+                .unwrap_or_else(|_| unreachable!("piece id came from official range"));
+            u16::from(blocus_core::standard_piece(piece_id).square_count())
+        })
+        .sum()
+}
+
+#[allow(clippy::needless_pass_by_value)]
+fn map_state_json_validation_error(error: blocus_core::DomainError) -> PyErr {
+    crate::conversion::map_domain_error(error)
 }

@@ -1,7 +1,7 @@
 //! Fixed-size board bit masks.
 
 use crate::board::{BOARD_LANES, BoardIndex};
-use crate::{BOARD_SIZE, ROW_STRIDE};
+use crate::{BOARD_SIZE, InputError, ROW_STRIDE};
 
 /// Mask containing the 20 playable cells of one padded 32-bit row.
 pub const ROW_PLAYABLE_MASK: u128 = (1u128 << BOARD_SIZE) - 1;
@@ -87,6 +87,23 @@ impl BoardMask {
         Self { lanes }
     }
 
+    /// Creates a board mask from raw lanes after validating that all set bits
+    /// are playable board cells.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`InputError::InvalidBoardIndex`] if any set bit is outside the
+    /// playable `20 × 20` board, including row-padding bits.
+    pub const fn try_from_lanes(lanes: [u128; BOARD_LANES]) -> Result<Self, InputError> {
+        let mask = Self { lanes };
+
+        if mask.is_playable_subset() {
+            Ok(mask)
+        } else {
+            Err(InputError::InvalidBoardIndex)
+        }
+    }
+
     /// Returns the raw lanes.
     #[must_use]
     pub const fn lanes(self) -> [u128; BOARD_LANES] {
@@ -103,6 +120,39 @@ impl BoardMask {
     #[must_use]
     pub fn contains(self, index: BoardIndex) -> bool {
         self.lanes[index.lane()] & index.lane_bit() != 0
+    }
+
+    /// Returns all playable indices contained in this mask in ascending padded
+    /// bit-index order.
+    ///
+    /// Invalid padding bits are ignored by the conversion step. Public API
+    /// boundaries should prefer [`Self::try_from_lanes`] or state validation to
+    /// reject invalid masks before this method is used.
+    #[must_use]
+    pub fn indices(self) -> Vec<BoardIndex> {
+        let mut result = Vec::with_capacity(
+            usize::try_from(self.count())
+                .unwrap_or_else(|_| unreachable!("board mask count always fits in usize")),
+        );
+
+        for (lane_index, lane_value) in self.lanes.into_iter().enumerate() {
+            let mut remaining = lane_value;
+
+            while remaining != 0 {
+                let offset = remaining.trailing_zeros();
+                let bit_index = lane_index * u128::BITS as usize + offset as usize;
+
+                if let Ok(raw_bit_index) = u16::try_from(bit_index)
+                    && let Ok(index) = BoardIndex::from_bit_index(raw_bit_index)
+                {
+                    result.push(index);
+                }
+
+                remaining &= remaining - 1;
+            }
+        }
+
+        result
     }
 
     /// Returns a copy of this mask with the index inserted.
