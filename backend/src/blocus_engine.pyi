@@ -146,41 +146,41 @@ class SharedColorTurn:
 class PlayerSlots:
     @staticmethod
     def two_player(
-            blue_red_player: str,
-            yellow_green_player: str,
+        blue_red_player: str,
+        yellow_green_player: str,
     ) -> PlayerSlots: ...
     @staticmethod
     def three_player(
-            owned_colors: Sequence[tuple[PlayerColor, str]],
-            shared_color_turn: SharedColorTurn,
+        owned_colors: Sequence[tuple[PlayerColor, str]],
+        shared_color_turn: SharedColorTurn,
     ) -> PlayerSlots: ...
     @staticmethod
     def four_player(
-            assignments: Sequence[tuple[PlayerColor, str]],
+        assignments: Sequence[tuple[PlayerColor, str]],
     ) -> PlayerSlots: ...
 
 class GameConfig:
     def __init__(
-            self,
-            game_id: str,
-            mode: GameMode,
-            scoring: ScoringMode,
-            turn_order: Sequence[PlayerColor],
-            player_slots: PlayerSlots,
+        self,
+        game_id: str,
+        mode: GameMode,
+        scoring: ScoringMode,
+        turn_order: Sequence[PlayerColor],
+        player_slots: PlayerSlots,
     ) -> None: ...
     @staticmethod
     def two_player(
-            game_id: str,
-            blue_red_player: str,
-            yellow_green_player: str,
-            scoring: ScoringMode,
+        game_id: str,
+        blue_red_player: str,
+        yellow_green_player: str,
+        scoring: ScoringMode,
     ) -> GameConfig: ...
     @staticmethod
     def four_player(
-            game_id: str,
-            assignments: Sequence[tuple[PlayerColor, str]],
-            scoring: ScoringMode,
-            turn_order: Sequence[PlayerColor],
+        game_id: str,
+        assignments: Sequence[tuple[PlayerColor, str]],
+        scoring: ScoringMode,
+        turn_order: Sequence[PlayerColor],
     ) -> GameConfig: ...
     @property
     def game_id(self) -> str: ...
@@ -219,15 +219,15 @@ class GameState:
 
 class PlaceCommand:
     def __init__(
-            self,
-            command_id: str,
-            game_id: str,
-            player_id: str,
-            color: PlayerColor,
-            piece_id: int,
-            orientation_id: int,
-            row: int,
-            col: int,
+        self,
+        command_id: str,
+        game_id: str,
+        player_id: str,
+        color: PlayerColor,
+        piece_id: int,
+        orientation_id: int,
+        row: int,
+        col: int,
     ) -> None: ...
     @property
     def command_id(self) -> str: ...
@@ -250,11 +250,11 @@ class PlaceCommand:
 
 class PassCommand:
     def __init__(
-            self,
-            command_id: str,
-            game_id: str,
-            player_id: str,
-            color: PlayerColor,
+        self,
+        command_id: str,
+        game_id: str,
+        player_id: str,
+        color: PlayerColor,
     ) -> None: ...
     @property
     def command_id(self) -> str: ...
@@ -295,24 +295,24 @@ class BlocusEngine:
     def __init__(self) -> None: ...
     def initialize_game(self, config: GameConfig) -> GameState: ...
     def apply(
-            self,
-            state: GameState,
-            command: PlaceCommand | PassCommand,
+        self,
+        state: GameState,
+        command: PlaceCommand | PassCommand,
     ) -> GameResult: ...
     def get_valid_moves(
-            self,
-            state: GameState,
-            player_id: str,
-            color: PlayerColor,
+        self,
+        state: GameState,
+        player_id: str,
+        color: PlayerColor,
     ) -> list[LegalMove]: ...
     def has_any_valid_move(
-            self,
-            state: GameState,
-            player_id: str,
-            color: PlayerColor,
+        self,
+        state: GameState,
+        player_id: str,
+        color: PlayerColor,
     ) -> bool: ...
     def score_game(
-            self,
-            state: GameState,
-            scoring: ScoringMode,
+        self,
+        state: GameState,
+        scoring: ScoringMode,
     ) -> ScoreBoard: ...

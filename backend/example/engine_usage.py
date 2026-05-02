@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import blocus_engine as be
+
 """
 Minimal Blocus engine usage example.
 
@@ -8,9 +10,6 @@ Run from backend/ after building the Rust Python extension:
     uv run maturin develop --manifest-path ../engine/crates/blocus-python/Cargo.toml
     uv run python example/engine_usage.py
 """
-
-import blocus_engine as be
-
 
 GAME_ID = "00000000-0000-0000-0000-000000000100"
 PLAYER_ONE = "00000000-0000-0000-0000-000000000001"
@@ -94,10 +93,10 @@ def main() -> None:
         game_id=GAME_ID,
         player_id=PLAYER_ONE,
         color=be.PlayerColor.BLUE,
-        piece_id=0,          # I1, the one-square piece
-        orientation_id=0,    # I1 has exactly one orientation
+        piece_id=0,  # I1, the one-square piece
+        orientation_id=0,  # I1 has exactly one orientation
         row=0,
-        col=0,               # Blue's starting corner
+        col=0,  # Blue's starting corner
     )
 
     result = engine.apply(state, opening_move)
@@ -136,7 +135,7 @@ def main() -> None:
         piece_id=0,
         orientation_id=0,
         row=0,
-        col=19,              # Yellow's starting corner
+        col=19,  # Yellow's starting corner
     )
 
     result = engine.apply(state, yellow_opening_move)

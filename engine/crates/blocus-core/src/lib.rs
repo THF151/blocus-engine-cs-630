@@ -30,6 +30,7 @@ pub use color::{PLAYER_COLOR_COUNT, PlayerColor, TurnOrder, TurnOrderPolicy};
 pub use config::{GameConfig, GameMode, PlayerSlots, SharedColorTurn, TurnState};
 pub use engine::{BlocusEngine, engine_health};
 pub use error::{DomainError, EngineError, InputError, RuleViolation};
+pub use hash::{board_cell_hash, compute_hash_full, inventory_piece_hash};
 pub use ids::{
     CommandId, GameId, MAX_ORIENTATION_COUNT, OrientationId, PIECE_COUNT, PieceId, PlayerId,
     SmallIdError, StateVersion, ZobristHash,

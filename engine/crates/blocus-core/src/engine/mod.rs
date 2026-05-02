@@ -42,7 +42,7 @@ impl BlocusEngine {
     /// Initializes a new game from a validated configuration.
     #[must_use]
     pub fn initialize_game(&self, config: GameConfig) -> GameState {
-        GameState {
+        let mut state = GameState {
             schema_version: StateSchemaVersion::CURRENT,
             game_id: config.game_id(),
             mode: config.mode(),
@@ -56,7 +56,10 @@ impl BlocusEngine {
             status: GameStatus::InProgress,
             version: StateVersion::INITIAL,
             hash: ZobristHash::ZERO,
-        }
+        };
+
+        state.hash = crate::compute_hash_full(&state);
+        state
     }
 
     /// Applies a command to a game state.
@@ -164,7 +167,7 @@ fn apply_place_command(
     }
 
     next_state.version = next_state.version.saturating_next();
-    next_state.hash = ZobristHash::ZERO;
+    next_state.hash = crate::compute_hash_full(&next_state);
 
     let is_finished = next_state.status == GameStatus::Finished;
 

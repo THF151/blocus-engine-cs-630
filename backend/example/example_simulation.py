@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+import time
+import tracemalloc
+from dataclasses import dataclass
+
+import blocus_engine as be
+
 """
 Complete greedy Blocus game simulation with:
   - final ANSI board visualization
@@ -11,12 +17,6 @@ Run from backend/ after building the Rust Python extension:
     uv run maturin develop --manifest-path ../engine/crates/blocus-python/Cargo.toml
     uv run python example/example_simulation.py
 """
-
-import time
-import tracemalloc
-from dataclasses import dataclass
-
-import blocus_engine as be
 
 
 GAME_ID = "00000000-0000-0000-0000-000000000700"
@@ -259,21 +259,15 @@ def choose_move(moves: list[be.LegalMove]) -> be.LegalMove:
 
 def print_performance_summary(stats: PerfStats) -> None:
     average_turn_seconds = (
-        stats.total_runtime_seconds / stats.total_turns
-        if stats.total_turns > 0
-        else 0.0
+        stats.total_runtime_seconds / stats.total_turns if stats.total_turns > 0 else 0.0
     )
 
     average_movegen_seconds = (
-        stats.total_movegen_seconds / stats.total_turns
-        if stats.total_turns > 0
-        else 0.0
+        stats.total_movegen_seconds / stats.total_turns if stats.total_turns > 0 else 0.0
     )
 
     average_apply_seconds = (
-        stats.total_apply_seconds / stats.total_turns
-        if stats.total_turns > 0
-        else 0.0
+        stats.total_apply_seconds / stats.total_turns if stats.total_turns > 0 else 0.0
     )
 
     print("\nPerformance summary")

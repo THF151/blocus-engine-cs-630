@@ -158,7 +158,7 @@ def test_initialize_two_player_game_exposes_stable_state_fields() -> None:
     assert state.scoring == blocus_engine.ScoringMode.BASIC
     assert state.status == blocus_engine.GameStatus.IN_PROGRESS
     assert state.version == 0
-    assert state.hash == 0
+    assert state.hash != 0
     assert state.board_is_empty is True
     assert state.current_color == blocus_engine.PlayerColor.BLUE
     assert [color.value for color in state.turn_order] == ["blue", "yellow", "red", "green"]

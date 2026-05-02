@@ -1,7 +1,7 @@
 use blocus_core::{
     BlocusEngine, BoardMask, BoardState, Command, CommandId, DomainError, GameConfig, GameMode,
     GameStatus, PassCommand, PieceId, PlayerColor, PlayerId, PlayerSlots, RuleViolation,
-    ScoringMode, StateSchemaVersion, StateVersion, TurnOrder, TurnState, ZobristHash,
+    ScoringMode, StateSchemaVersion, StateVersion, TurnOrder, TurnState,
 };
 use uuid::Uuid;
 
@@ -141,7 +141,8 @@ fn assert_initial_state_matches_config(config: GameConfig) {
     assert_eq!(state.turn, TurnState::new(config.turn_order()));
     assert_eq!(state.status, GameStatus::InProgress);
     assert_eq!(state.version, StateVersion::INITIAL);
-    assert_eq!(state.hash, ZobristHash::ZERO);
+    assert_eq!(state.hash, blocus_core::hash::compute_hash_full(&state));
+    assert_ne!(state.hash.as_u64(), 0);
 
     for inventory in state.inventories {
         assert_eq!(inventory.used_count(), 0);
