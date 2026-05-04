@@ -2,7 +2,7 @@
 
 use crate::pieces::PieceInventory;
 use crate::{
-    BoardState, GameId, GameMode, PIECE_COUNT, PLAYER_COLOR_COUNT, PieceId, PlayerColor,
+    BoardState, GameId, GameMode, MAX_PLAYER_COLOR_COUNT, PIECE_COUNT, PieceId, PlayerColor,
     PlayerSlots, StateVersion, TurnOrder, TurnState, ZobristHash,
 };
 
@@ -80,7 +80,7 @@ impl LastPieceByColor {
 
     /// Creates the compact tracker from a raw packed value.
     ///
-    /// Bits outside the four five-bit slots are ignored.
+    /// Bits outside the supported five-bit color slots are ignored.
     #[must_use]
     pub const fn from_packed(packed: u32) -> Self {
         Self {
@@ -147,7 +147,7 @@ pub struct GameState {
     /// Board occupancy state.
     pub board: BoardState,
     /// Per-color inventories.
-    pub inventories: [PieceInventory; PLAYER_COLOR_COUNT],
+    pub inventories: [PieceInventory; MAX_PLAYER_COLOR_COUNT],
     /// Last placed piece by color, used for advanced scoring bonuses.
     pub last_piece_by_color: LastPieceByColor,
     /// Turn progression state.
@@ -191,7 +191,7 @@ fn piece_ids_matching_inventory(inventory: PieceInventory, used: bool) -> Vec<Pi
 
 const LAST_PIECE_SLOT_BITS: u32 = 5;
 const LAST_PIECE_SLOT_MASK: u32 = (1u32 << LAST_PIECE_SLOT_BITS) - 1;
-const LAST_PIECE_PACKED_MASK: u32 = (1u32 << (LAST_PIECE_SLOT_BITS * 4)) - 1;
+const LAST_PIECE_PACKED_MASK: u32 = (1u32 << (LAST_PIECE_SLOT_BITS * 6)) - 1;
 
 const fn last_piece_shift(color: PlayerColor) -> u32 {
     let slot = match color {
@@ -199,6 +199,8 @@ const fn last_piece_shift(color: PlayerColor) -> u32 {
         PlayerColor::Yellow => 1,
         PlayerColor::Red => 2,
         PlayerColor::Green => 3,
+        PlayerColor::Black => 4,
+        PlayerColor::White => 5,
     };
 
     slot * LAST_PIECE_SLOT_BITS

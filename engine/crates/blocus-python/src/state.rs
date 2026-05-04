@@ -74,6 +74,8 @@ pub struct BoardSnapshot {
     yellow: Vec<BoardCell>,
     red: Vec<BoardCell>,
     green: Vec<BoardCell>,
+    black: Vec<BoardCell>,
+    white: Vec<BoardCell>,
 }
 
 impl BoardSnapshot {
@@ -83,6 +85,8 @@ impl BoardSnapshot {
             yellow: cells_for_color(board, blocus_core::PlayerColor::Yellow),
             red: cells_for_color(board, blocus_core::PlayerColor::Red),
             green: cells_for_color(board, blocus_core::PlayerColor::Green),
+            black: cells_for_color(board, blocus_core::PlayerColor::Black),
+            white: cells_for_color(board, blocus_core::PlayerColor::White),
         }
     }
 }
@@ -110,19 +114,36 @@ impl BoardSnapshot {
     }
 
     #[getter]
+    fn black(&self) -> Vec<BoardCell> {
+        self.black.clone()
+    }
+
+    #[getter]
+    fn white(&self) -> Vec<BoardCell> {
+        self.white.clone()
+    }
+
+    #[getter]
     fn occupied(&self) -> Vec<BoardCell> {
         self.blue
             .iter()
             .chain(self.yellow.iter())
             .chain(self.red.iter())
             .chain(self.green.iter())
+            .chain(self.black.iter())
+            .chain(self.white.iter())
             .copied()
             .collect()
     }
 
     #[getter]
     fn occupied_count(&self) -> usize {
-        self.blue.len() + self.yellow.len() + self.red.len() + self.green.len()
+        self.blue.len()
+            + self.yellow.len()
+            + self.red.len()
+            + self.green.len()
+            + self.black.len()
+            + self.white.len()
     }
 
     fn cells_for_color(&self, color: PlayerColor) -> Vec<BoardCell> {
@@ -131,16 +152,20 @@ impl BoardSnapshot {
             blocus_core::PlayerColor::Yellow => self.yellow(),
             blocus_core::PlayerColor::Red => self.red(),
             blocus_core::PlayerColor::Green => self.green(),
+            blocus_core::PlayerColor::Black => self.black(),
+            blocus_core::PlayerColor::White => self.white(),
         }
     }
 
     fn __repr__(&self) -> String {
         format!(
-            "BoardSnapshot(blue={}, yellow={}, red={}, green={})",
+            "BoardSnapshot(blue={}, yellow={}, red={}, green={}, black={}, white={})",
             self.blue.len(),
             self.yellow.len(),
             self.red.len(),
-            self.green.len()
+            self.green.len(),
+            self.black.len(),
+            self.white.len()
         )
     }
 
@@ -388,6 +413,11 @@ impl GameState {
     }
 
     #[getter]
+    fn board_size(&self) -> u8 {
+        self.inner.mode.board_size()
+    }
+
+    #[getter]
     fn board(&self) -> BoardSnapshot {
         BoardSnapshot::from_board(&self.inner.board)
     }
@@ -413,6 +443,10 @@ impl GameState {
     }
 
     fn cell(&self, row: u8, col: u8) -> PyResult<Option<PlayerColor>> {
+        if row >= self.inner.mode.board_size() || col >= self.inner.mode.board_size() {
+            return Err(map_input_error(blocus_core::InputError::InvalidBoardIndex));
+        }
+
         let index = blocus_core::BoardIndex::from_row_col(row, col).map_err(map_input_error)?;
         Ok(cell_color_at(&self.inner.board, index))
     }
@@ -426,9 +460,9 @@ impl GameState {
     }
 
     fn board_matrix(&self) -> Vec<Vec<Option<PlayerColor>>> {
-        (0..blocus_core::BOARD_SIZE)
+        (0..self.inner.mode.board_size())
             .map(|row| {
-                (0..blocus_core::BOARD_SIZE)
+                (0..self.inner.mode.board_size())
                     .map(|col| {
                         let index = blocus_core::BoardIndex::from_row_col(row, col)
                             .unwrap_or_else(|_| unreachable!("row and column are playable"));
@@ -440,8 +474,11 @@ impl GameState {
     }
 
     fn board_counts(&self) -> Vec<(PlayerColor, u32)> {
-        blocus_core::PlayerColor::ALL
-            .into_iter()
+        self.inner
+            .mode
+            .active_colors()
+            .iter()
+            .copied()
             .map(|color| {
                 (
                     PlayerColor::from_core(color),
@@ -503,7 +540,7 @@ fn state_to_json(state: &blocus_core::GameState) -> Value {
             .map(player_color_value)
             .collect::<Vec<_>>(),
         "player_slots": player_slots_to_json(state.player_slots),
-        "board": board_to_json(&state.board),
+        "board": board_to_json(state.mode, &state.board),
         "inventories": inventories_to_json(state),
         "last_piece_by_color_packed": state.last_piece_by_color.packed(),
         "turn": {
@@ -519,8 +556,11 @@ fn state_to_json(state: &blocus_core::GameState) -> Value {
 
 fn player_slots_to_json(slots: blocus_core::PlayerSlots) -> Value {
     json!({
-        "controllers": blocus_core::PlayerColor::ALL
-            .into_iter()
+        "controllers": slots
+            .mode()
+            .active_colors()
+            .iter()
+            .copied()
             .map(|color| {
                 slots
                     .controller_of(color)
@@ -540,15 +580,23 @@ fn player_slots_to_json(slots: blocus_core::PlayerSlots) -> Value {
     })
 }
 
-fn board_to_json(board: &blocus_core::BoardState) -> Value {
+fn board_to_json(mode: blocus_core::GameMode, board: &blocus_core::BoardState) -> Value {
     let occupied_by_color = board.occupied_by_color();
 
-    json!({
-        "blue": mask_to_json(occupied_by_color[blocus_core::PlayerColor::Blue.index()]),
-        "yellow": mask_to_json(occupied_by_color[blocus_core::PlayerColor::Yellow.index()]),
-        "red": mask_to_json(occupied_by_color[blocus_core::PlayerColor::Red.index()]),
-        "green": mask_to_json(occupied_by_color[blocus_core::PlayerColor::Green.index()]),
-    })
+    match mode {
+        blocus_core::GameMode::TwoPlayer
+        | blocus_core::GameMode::ThreePlayer
+        | blocus_core::GameMode::FourPlayer => json!({
+            "blue": mask_to_json(occupied_by_color[blocus_core::PlayerColor::Blue.index()]),
+            "yellow": mask_to_json(occupied_by_color[blocus_core::PlayerColor::Yellow.index()]),
+            "red": mask_to_json(occupied_by_color[blocus_core::PlayerColor::Red.index()]),
+            "green": mask_to_json(occupied_by_color[blocus_core::PlayerColor::Green.index()]),
+        }),
+        blocus_core::GameMode::Duo => json!({
+            "black": mask_to_json(occupied_by_color[blocus_core::PlayerColor::Black.index()]),
+            "white": mask_to_json(occupied_by_color[blocus_core::PlayerColor::White.index()]),
+        }),
+    }
 }
 
 fn mask_to_json(mask: blocus_core::BoardMask) -> Value {
@@ -567,9 +615,11 @@ fn mask_to_json(mask: blocus_core::BoardMask) -> Value {
 fn inventories_to_json(state: &blocus_core::GameState) -> Value {
     json!(
         state
-            .inventories
-            .into_iter()
-            .map(blocus_core::PieceInventory::used_mask)
+            .mode
+            .active_colors()
+            .iter()
+            .copied()
+            .map(|color| state.inventories[color.index()].used_mask())
             .collect::<Vec<_>>()
     )
 }
@@ -581,10 +631,10 @@ fn parse_game_state_json(value: &Value) -> PyResult<blocus_core::GameState> {
         blocus_core::GameId::from_uuid(parse_uuid(required_str(value, "game_id")?, "game_id")?);
     let mode = parse_game_mode(required_str(value, "mode")?)?;
     let scoring = parse_scoring_mode(required_str(value, "scoring")?)?;
-    let turn_order = parse_turn_order(required_array(value, "turn_order")?)?;
+    let turn_order = parse_turn_order(mode, required_array(value, "turn_order")?)?;
     let player_slots = parse_player_slots(mode, required_object_value(value, "player_slots")?)?;
-    let board = parse_board(required_object_value(value, "board")?)?;
-    let inventories = parse_inventories(required_array(value, "inventories")?)?;
+    let board = parse_board(mode, required_object_value(value, "board")?)?;
+    let inventories = parse_inventories(mode, required_array(value, "inventories")?)?;
     let last_piece_by_color = blocus_core::LastPieceByColor::from_packed(required_u32(
         value,
         "last_piece_by_color_packed",
@@ -617,22 +667,42 @@ fn parse_game_state_json(value: &Value) -> PyResult<blocus_core::GameState> {
     })
 }
 
-fn parse_turn_order(values: &[Value]) -> PyResult<blocus_core::TurnOrder> {
-    let colors = parse_exact_colors::<4>(values, "turn_order")?;
-    blocus_core::TurnOrder::try_new(colors).map_err(map_input_error)
+fn parse_turn_order(
+    mode: blocus_core::GameMode,
+    values: &[Value],
+) -> PyResult<blocus_core::TurnOrder> {
+    match mode {
+        blocus_core::GameMode::TwoPlayer
+        | blocus_core::GameMode::ThreePlayer
+        | blocus_core::GameMode::FourPlayer => {
+            let colors = parse_exact_colors::<4>(values, "turn_order")?;
+            blocus_core::TurnOrder::try_new(colors).map_err(map_input_error)
+        }
+        blocus_core::GameMode::Duo => {
+            let colors = parse_exact_colors::<2>(values, "turn_order")?;
+            let order = blocus_core::TurnOrder::duo(colors[0]).map_err(map_input_error)?;
+
+            if order.colors() == colors {
+                Ok(order)
+            } else {
+                Err(crate::conversion::invalid_game_config_error())
+            }
+        }
+    }
 }
 
+#[allow(clippy::too_many_lines)]
 fn parse_player_slots(
     mode: blocus_core::GameMode,
     value: &Value,
 ) -> PyResult<blocus_core::PlayerSlots> {
     let controllers = required_array(value, "controllers")?;
 
-    if controllers.len() != blocus_core::PLAYER_COLOR_COUNT {
+    if controllers.len() != mode.active_colors().len() {
         return Err(crate::conversion::invalid_game_config_error());
     }
 
-    let controller = |index: usize| -> PyResult<Option<blocus_core::PlayerId>> {
+    let controller_at_active_index = |index: usize| -> PyResult<Option<blocus_core::PlayerId>> {
         if controllers[index].is_null() {
             Ok(None)
         } else {
@@ -645,20 +715,31 @@ fn parse_player_slots(
         }
     };
 
+    let controller = |color: blocus_core::PlayerColor| -> PyResult<Option<blocus_core::PlayerId>> {
+        let Some(active_index) = mode
+            .active_colors()
+            .iter()
+            .position(|active| *active == color)
+        else {
+            return Ok(None);
+        };
+
+        controller_at_active_index(active_index)
+    };
+
     match mode {
         blocus_core::GameMode::TwoPlayer => {
-            let Some(blue_red_player) = controller(blocus_core::PlayerColor::Blue.index())? else {
+            let Some(blue_red_player) = controller(blocus_core::PlayerColor::Blue)? else {
                 return Err(crate::conversion::invalid_game_config_error());
             };
-            let Some(yellow_green_player) = controller(blocus_core::PlayerColor::Yellow.index())?
-            else {
+            let Some(yellow_green_player) = controller(blocus_core::PlayerColor::Yellow)? else {
                 return Err(crate::conversion::invalid_game_config_error());
             };
 
-            let Some(red_player) = controller(blocus_core::PlayerColor::Red.index())? else {
+            let Some(red_player) = controller(blocus_core::PlayerColor::Red)? else {
                 return Err(crate::conversion::invalid_game_config_error());
             };
-            let Some(green_player) = controller(blocus_core::PlayerColor::Green.index())? else {
+            let Some(green_player) = controller(blocus_core::PlayerColor::Green)? else {
                 return Err(crate::conversion::invalid_game_config_error());
             };
 
@@ -709,16 +790,16 @@ fn parse_player_slots(
 
             let mut owned = Vec::with_capacity(3);
 
-            for color in blocus_core::PlayerColor::ALL {
+            for color in blocus_core::PlayerColor::CLASSIC {
                 if color == shared_color {
-                    if controller(color.index())?.is_some() {
+                    if controller(color)?.is_some() {
                         return Err(crate::conversion::invalid_game_config_error());
                     }
 
                     continue;
                 }
 
-                let Some(player_id) = controller(color.index())? else {
+                let Some(player_id) = controller(color)? else {
                     return Err(crate::conversion::invalid_game_config_error());
                 };
 
@@ -741,6 +822,16 @@ fn parse_player_slots(
 
             blocus_core::PlayerSlots::four_player(assignments).map_err(map_input_error)
         }
+        blocus_core::GameMode::Duo => {
+            let Some(black_player) = controller(blocus_core::PlayerColor::Black)? else {
+                return Err(crate::conversion::invalid_game_config_error());
+            };
+            let Some(white_player) = controller(blocus_core::PlayerColor::White)? else {
+                return Err(crate::conversion::invalid_game_config_error());
+            };
+
+            blocus_core::PlayerSlots::duo(black_player, white_player).map_err(map_input_error)
+        }
     }
 }
 
@@ -749,42 +840,29 @@ fn required_assignment<F>(
     color: blocus_core::PlayerColor,
 ) -> PyResult<(blocus_core::PlayerColor, blocus_core::PlayerId)>
 where
-    F: Fn(usize) -> PyResult<Option<blocus_core::PlayerId>>,
+    F: Fn(blocus_core::PlayerColor) -> PyResult<Option<blocus_core::PlayerId>>,
 {
-    let Some(player_id) = controller(color.index())? else {
+    let Some(player_id) = controller(color)? else {
         return Err(crate::conversion::invalid_game_config_error());
     };
 
     Ok((color, player_id))
 }
 
-fn parse_board(value: &Value) -> PyResult<blocus_core::BoardState> {
+fn parse_board(mode: blocus_core::GameMode, value: &Value) -> PyResult<blocus_core::BoardState> {
     let board = value
         .as_object()
         .ok_or_else(crate::conversion::invalid_game_config_error)?;
 
-    let masks = [
-        parse_mask(
+    let mut masks = [blocus_core::BoardMask::EMPTY; blocus_core::MAX_PLAYER_COLOR_COUNT];
+
+    for color in mode.active_colors().iter().copied() {
+        masks[color.index()] = parse_mask(
             board
-                .get("blue")
+                .get(color.as_str())
                 .ok_or_else(crate::conversion::invalid_game_config_error)?,
-        )?,
-        parse_mask(
-            board
-                .get("yellow")
-                .ok_or_else(crate::conversion::invalid_game_config_error)?,
-        )?,
-        parse_mask(
-            board
-                .get("red")
-                .ok_or_else(crate::conversion::invalid_game_config_error)?,
-        )?,
-        parse_mask(
-            board
-                .get("green")
-                .ok_or_else(crate::conversion::invalid_game_config_error)?,
-        )?,
-    ];
+        )?;
+    }
 
     Ok(blocus_core::BoardState::from_occupied_by_color(masks))
 }
@@ -817,18 +895,26 @@ fn parse_mask(value: &Value) -> PyResult<blocus_core::BoardMask> {
 }
 
 fn parse_inventories(
+    mode: blocus_core::GameMode,
     values: &[Value],
-) -> PyResult<[blocus_core::PieceInventory; blocus_core::PLAYER_COLOR_COUNT]> {
-    if values.len() != blocus_core::PLAYER_COLOR_COUNT {
+) -> PyResult<[blocus_core::PieceInventory; blocus_core::MAX_PLAYER_COLOR_COUNT]> {
+    if values.len() != mode.active_colors().len() {
         return Err(crate::conversion::invalid_game_config_error());
     }
 
-    Ok([
-        blocus_core::PieceInventory::from_used_mask(value_as_u32(&values[0])?),
-        blocus_core::PieceInventory::from_used_mask(value_as_u32(&values[1])?),
-        blocus_core::PieceInventory::from_used_mask(value_as_u32(&values[2])?),
-        blocus_core::PieceInventory::from_used_mask(value_as_u32(&values[3])?),
-    ])
+    let mut inventories = [blocus_core::PieceInventory::EMPTY; blocus_core::MAX_PLAYER_COLOR_COUNT];
+
+    for (index, color) in mode.active_colors().iter().copied().enumerate() {
+        let raw = value_as_u32(&values[index])?;
+
+        if raw & !blocus_core::ALL_PIECES_MASK != 0 {
+            return Err(crate::conversion::invalid_game_config_error());
+        }
+
+        inventories[color.index()] = blocus_core::PieceInventory::from_used_mask(raw);
+    }
+
+    Ok(inventories)
 }
 
 fn parse_exact_colors<const N: usize>(
@@ -915,6 +1001,8 @@ fn parse_player_color(value: &str) -> PyResult<blocus_core::PlayerColor> {
         "yellow" | "YELLOW" | "Yellow" => Ok(blocus_core::PlayerColor::Yellow),
         "red" | "RED" | "Red" => Ok(blocus_core::PlayerColor::Red),
         "green" | "GREEN" | "Green" => Ok(blocus_core::PlayerColor::Green),
+        "black" | "BLACK" | "Black" => Ok(blocus_core::PlayerColor::Black),
+        "white" | "WHITE" | "White" => Ok(blocus_core::PlayerColor::White),
         _ => Err(crate::conversion::invalid_game_config_error()),
     }
 }
@@ -924,6 +1012,7 @@ fn parse_game_mode(value: &str) -> PyResult<blocus_core::GameMode> {
         "two_player" | "TWO_PLAYER" | "TwoPlayer" => Ok(blocus_core::GameMode::TwoPlayer),
         "three_player" | "THREE_PLAYER" | "ThreePlayer" => Ok(blocus_core::GameMode::ThreePlayer),
         "four_player" | "FOUR_PLAYER" | "FourPlayer" => Ok(blocus_core::GameMode::FourPlayer),
+        "duo" | "DUO" | "Duo" => Ok(blocus_core::GameMode::Duo),
         _ => Err(crate::conversion::invalid_game_config_error()),
     }
 }
@@ -953,6 +1042,7 @@ fn game_mode_value(mode: blocus_core::GameMode) -> &'static str {
         blocus_core::GameMode::TwoPlayer => "two_player",
         blocus_core::GameMode::ThreePlayer => "three_player",
         blocus_core::GameMode::FourPlayer => "four_player",
+        blocus_core::GameMode::Duo => "duo",
     }
 }
 

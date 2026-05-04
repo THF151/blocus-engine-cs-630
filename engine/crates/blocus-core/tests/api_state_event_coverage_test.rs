@@ -40,9 +40,9 @@ fn last_piece_by_color_from_packed_and_packed_round_trip_valid_slots() {
 }
 
 #[test]
-fn last_piece_by_color_from_packed_masks_bits_outside_four_slots() {
+fn last_piece_by_color_from_packed_masks_bits_outside_supported_slots() {
     let valid_packed = 1;
-    let noisy_packed = valid_packed | (u32::MAX << 20);
+    let noisy_packed = valid_packed | (u32::MAX << 30);
 
     let tracker = LastPieceByColor::from_packed(noisy_packed);
 
@@ -51,6 +51,8 @@ fn last_piece_by_color_from_packed_masks_bits_outside_four_slots() {
     assert_eq!(tracker.get(PlayerColor::Yellow), None);
     assert_eq!(tracker.get(PlayerColor::Red), None);
     assert_eq!(tracker.get(PlayerColor::Green), None);
+    assert_eq!(tracker.get(PlayerColor::Black), None);
+    assert_eq!(tracker.get(PlayerColor::White), None);
 }
 #[test]
 fn last_piece_by_color_get_returns_none_for_empty_and_invalid_encoded_slots() {

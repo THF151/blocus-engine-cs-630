@@ -2,9 +2,9 @@
 
 use crate::pieces::{PieceOrientation, PieceRepository, ShapeBitmap};
 use crate::{
-    BOARD_LANES, BOARD_SIZE, BoardIndex, BoardMask, DomainError, GameState, GameStatus, InputError,
-    MAX_SHAPE_EXTENT, OrientationId, PIECE_COUNT, PieceId, PlaceCommand, PlayerColor, ROW_STRIDE,
-    RuleViolation,
+    BOARD_LANES, BOARD_SIZE, BoardGeometry, BoardIndex, BoardMask, DomainError, GameState,
+    GameStatus, InputError, MAX_SHAPE_EXTENT, OpeningPolicy, OrientationId, PIECE_COUNT, PieceId,
+    PlaceCommand, PlayerColor, ROW_STRIDE, RuleViolation, Ruleset,
 };
 
 /// A concrete piece placement on the board.
@@ -69,15 +69,19 @@ impl Placement {
 /// so it does at most five cell insertions per call.
 #[must_use]
 #[inline]
-pub(crate) fn build_placement_mask(shape: ShapeBitmap, anchor: BoardIndex) -> Option<BoardMask> {
+pub(crate) fn build_placement_mask(
+    shape: ShapeBitmap,
+    anchor: BoardIndex,
+    geometry: BoardGeometry,
+) -> Option<BoardMask> {
     let anchor_row = anchor.row();
     let anchor_col = anchor.col();
 
-    if anchor_row.checked_add(shape.height())? > BOARD_SIZE {
+    if anchor_row.checked_add(shape.height())? > geometry.size() {
         return None;
     }
 
-    if anchor_col.checked_add(shape.width())? > BOARD_SIZE {
+    if anchor_col.checked_add(shape.width())? > geometry.size() {
         return None;
     }
 
@@ -116,9 +120,25 @@ pub fn build_placement(
     orientation: PieceOrientation,
     anchor: BoardIndex,
 ) -> Result<Placement, DomainError> {
+    build_placement_for_geometry(piece_id, orientation, anchor, BoardGeometry::classic())
+}
+
+/// Builds a board mask for an already-resolved piece orientation under a
+/// variant-specific board geometry.
+///
+/// # Errors
+///
+/// Returns [`RuleViolation::OutOfBounds`] if any occupied orientation cell would
+/// land outside the variant's playable board.
+pub fn build_placement_for_geometry(
+    piece_id: PieceId,
+    orientation: PieceOrientation,
+    anchor: BoardIndex,
+    geometry: BoardGeometry,
+) -> Result<Placement, DomainError> {
     let shape = orientation.shape();
 
-    let Some(mask) = build_placement_mask(shape, anchor) else {
+    let Some(mask) = build_placement_mask(shape, anchor, geometry) else {
         return Err(RuleViolation::OutOfBounds.into());
     };
 
@@ -153,6 +173,10 @@ pub fn validate_place_command(
         return Err(RuleViolation::WrongPlayerTurn.into());
     }
 
+    if !state.mode.is_active_color(command.color) {
+        return Err(RuleViolation::PlayerDoesNotControlColor.into());
+    }
+
     if !state
         .turn
         .is_active_controller(state.player_slots, command.player_id)
@@ -174,7 +198,21 @@ pub fn validate_place_command(
         return Err(InputError::UnknownOrientation.into());
     };
 
-    let placement = build_placement(command.piece_id, orientation, command.anchor)?;
+    let ruleset = state.mode.ruleset();
+    let placement = build_placement_for_geometry(
+        command.piece_id,
+        orientation,
+        command.anchor,
+        ruleset.geometry(),
+    )?;
+
+    if !placement
+        .mask()
+        .is_subset_of(ruleset.geometry().playable_mask())
+    {
+        return Err(RuleViolation::OutOfBounds.into());
+    }
+
     let occupied_all = state.board.occupied_all();
 
     if placement.mask().intersects(occupied_all) {
@@ -182,19 +220,21 @@ pub fn validate_place_command(
     }
 
     let own_mask = state.board.occupied(command.color);
-    validate_contact_rules(command.color, placement.mask(), own_mask)?;
+    validate_contact_rules(state, command.color, placement.mask(), own_mask, ruleset)?;
 
     Ok(placement)
 }
 
 #[inline]
 fn validate_contact_rules(
+    state: &GameState,
     color: PlayerColor,
     placement_mask: BoardMask,
     own_mask: BoardMask,
+    ruleset: Ruleset,
 ) -> Result<(), DomainError> {
     if own_mask.is_empty() {
-        return validate_first_move_covers_starting_corner(color, placement_mask);
+        return validate_first_move_covers_opening_target(state, color, placement_mask, ruleset);
     }
 
     if has_same_color_edge_contact(placement_mask, own_mask) {
@@ -209,11 +249,13 @@ fn validate_contact_rules(
 }
 
 #[inline]
-fn validate_first_move_covers_starting_corner(
+fn validate_first_move_covers_opening_target(
+    state: &GameState,
     color: PlayerColor,
     placement_mask: BoardMask,
+    ruleset: Ruleset,
 ) -> Result<(), DomainError> {
-    if placement_mask.contains(starting_corner_for(color)) {
+    if placement_mask.intersects(opening_target_mask(state, color, ruleset)) {
         Ok(())
     } else {
         Err(RuleViolation::MissingCornerContact.into())
@@ -246,8 +288,34 @@ pub(crate) fn starting_corner_for(color: PlayerColor) -> BoardIndex {
         PlayerColor::Yellow => (0, BOARD_SIZE - 1),
         PlayerColor::Red => (BOARD_SIZE - 1, BOARD_SIZE - 1),
         PlayerColor::Green => (BOARD_SIZE - 1, 0),
+        PlayerColor::Black | PlayerColor::White => {
+            unreachable!("Duo colors do not have classic starting corners")
+        }
     };
 
     BoardIndex::from_row_col(row, col)
         .unwrap_or_else(|_| unreachable!("configured starting corners are always playable"))
+}
+
+/// Returns the required opening target cells for `color` under `ruleset`.
+#[must_use]
+pub(crate) fn opening_target_mask(
+    state: &GameState,
+    color: PlayerColor,
+    ruleset: Ruleset,
+) -> BoardMask {
+    match ruleset.opening_policy() {
+        OpeningPolicy::ClassicCorners => BoardMask::from_index(starting_corner_for(color)),
+        OpeningPolicy::DuoStartingPoints { first, second } => {
+            if !state.board.occupied(color).is_empty() {
+                return BoardMask::EMPTY;
+            }
+
+            let starts = BoardMask::from_index(first).union(BoardMask::from_index(second));
+            let occupied_starts = state.board.occupied_all().intersection(starts);
+            starts
+                .difference(occupied_starts)
+                .intersection(ruleset.geometry().playable_mask())
+        }
+    }
 }

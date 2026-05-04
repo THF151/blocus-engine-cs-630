@@ -16,6 +16,7 @@ fn engine_health() -> bool {
 }
 
 #[pymodule]
+#[allow(clippy::too_many_lines)]
 fn blocus_engine(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(engine_health, module)?)?;
     errors::register(module)?;
@@ -67,6 +68,20 @@ fn blocus_engine(module: &Bound<'_, PyModule>) -> PyResult<()> {
         Py::new(
             py,
             types::PlayerColor::from_core(blocus_core::PlayerColor::Green),
+        )?,
+    )?;
+    player_color.setattr(
+        "BLACK",
+        Py::new(
+            py,
+            types::PlayerColor::from_core(blocus_core::PlayerColor::Black),
+        )?,
+    )?;
+    player_color.setattr(
+        "WHITE",
+        Py::new(
+            py,
+            types::PlayerColor::from_core(blocus_core::PlayerColor::White),
         )?,
     )?;
 
@@ -123,6 +138,10 @@ fn blocus_engine(module: &Bound<'_, PyModule>) -> PyResult<()> {
             py,
             config::GameMode::from_core(blocus_core::GameMode::FourPlayer),
         )?,
+    )?;
+    game_mode.setattr(
+        "DUO",
+        Py::new(py, config::GameMode::from_core(blocus_core::GameMode::Duo))?,
     )?;
 
     Ok(())

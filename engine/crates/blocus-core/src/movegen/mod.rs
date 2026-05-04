@@ -7,9 +7,9 @@
 //! `(piece_id, orientation_id, anchor bit index)`.
 
 use crate::pieces::{PieceRepository, ShapeBitmap};
-use crate::rules::placement::starting_corner_for;
+use crate::rules::placement::opening_target_mask;
 use crate::{
-    BOARD_SIZE, BoardIndex, BoardMask, DomainError, GameState, GameStatus, LegalMove,
+    BoardGeometry, BoardIndex, BoardMask, DomainError, GameState, GameStatus, LegalMove,
     MAX_SHAPE_EXTENT, OrientationId, PIECE_COUNT, PieceId, PlayerColor, PlayerId,
 };
 
@@ -21,6 +21,7 @@ use crate::{
 pub struct LegalMoveIter {
     repository: &'static PieceRepository,
 
+    geometry: BoardGeometry,
     target_mask: BoardMask,
     forbidden_cells: BoardMask,
     available_pieces: u32,
@@ -49,16 +50,20 @@ impl LegalMoveIter {
     ) -> Self {
         let context_is_valid = state.status == GameStatus::InProgress
             && state.turn.current_color() == color
+            && state.mode.is_active_color(color)
             && state
                 .turn
                 .is_active_controller(state.player_slots, player_id);
 
+        let ruleset = state.mode.ruleset();
         let own_mask = state.board.occupied(color);
         let occupied_mask = state.board.occupied_all();
         let target_mask = if own_mask.is_empty() {
-            BoardMask::from_index(starting_corner_for(color))
+            opening_target_mask(state, color, ruleset)
         } else {
-            own_mask.diagonal_frontier()
+            own_mask
+                .diagonal_frontier()
+                .intersection(ruleset.geometry().playable_mask())
         };
         let forbidden_cells = if own_mask.is_empty() {
             occupied_mask
@@ -73,6 +78,7 @@ impl LegalMoveIter {
 
         Self {
             repository,
+            geometry: ruleset.geometry(),
             target_mask,
             forbidden_cells,
             available_pieces,
@@ -133,7 +139,8 @@ impl LegalMoveIter {
             };
 
             let shape = orientation.shape();
-            let anchor_mask = legal_anchor_mask(shape, self.target_mask, self.forbidden_cells);
+            let anchor_mask =
+                legal_anchor_mask(shape, self.target_mask, self.forbidden_cells, self.geometry);
 
             if anchor_mask.is_empty() {
                 continue;
@@ -184,6 +191,7 @@ fn legal_anchor_mask(
     shape: ShapeBitmap,
     required_cells: BoardMask,
     forbidden_cells: BoardMask,
+    geometry: BoardGeometry,
 ) -> BoardMask {
     let mut required_anchors = BoardMask::EMPTY;
     let mut forbidden_anchors = BoardMask::EMPTY;
@@ -204,14 +212,26 @@ fn legal_anchor_mask(
         remaining &= remaining - 1;
     }
 
-    valid_anchor_mask(shape)
+    valid_anchor_mask(shape, geometry)
         .intersection(required_anchors)
         .difference(forbidden_anchors)
 }
 
-fn valid_anchor_mask(shape: ShapeBitmap) -> BoardMask {
-    let row_limit = BOARD_SIZE + 1 - shape.height();
-    let col_limit = BOARD_SIZE + 1 - shape.width();
+fn valid_anchor_mask(shape: ShapeBitmap, geometry: BoardGeometry) -> BoardMask {
+    let Some(row_limit) = geometry
+        .size()
+        .checked_add(1)
+        .and_then(|value| value.checked_sub(shape.height()))
+    else {
+        return BoardMask::EMPTY;
+    };
+    let Some(col_limit) = geometry
+        .size()
+        .checked_add(1)
+        .and_then(|value| value.checked_sub(shape.width()))
+    else {
+        return BoardMask::EMPTY;
+    };
     let mut mask = BoardMask::EMPTY;
     let mut row = 0u8;
 

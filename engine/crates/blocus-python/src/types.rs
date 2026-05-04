@@ -23,6 +23,8 @@ impl PlayerColor {
             "yellow" | "YELLOW" | "Yellow" => Ok(blocus_core::PlayerColor::Yellow),
             "red" | "RED" | "Red" => Ok(blocus_core::PlayerColor::Red),
             "green" | "GREEN" | "Green" => Ok(blocus_core::PlayerColor::Green),
+            "black" | "BLACK" | "Black" => Ok(blocus_core::PlayerColor::Black),
+            "white" | "WHITE" | "White" => Ok(blocus_core::PlayerColor::White),
             _ => {
                 let _ = value;
                 Err(crate::conversion::invalid_game_config_error())
@@ -36,6 +38,8 @@ impl PlayerColor {
             blocus_core::PlayerColor::Yellow => "PlayerColor.YELLOW",
             blocus_core::PlayerColor::Red => "PlayerColor.RED",
             blocus_core::PlayerColor::Green => "PlayerColor.GREEN",
+            blocus_core::PlayerColor::Black => "PlayerColor.BLACK",
+            blocus_core::PlayerColor::White => "PlayerColor.WHITE",
         }
     }
 }
@@ -68,6 +72,16 @@ impl PlayerColor {
         Self::from_core(blocus_core::PlayerColor::Green)
     }
 
+    #[staticmethod]
+    fn black() -> Self {
+        Self::from_core(blocus_core::PlayerColor::Black)
+    }
+
+    #[staticmethod]
+    fn white() -> Self {
+        Self::from_core(blocus_core::PlayerColor::White)
+    }
+
     #[getter]
     fn name(&self) -> &'static str {
         match self.inner {
@@ -75,6 +89,8 @@ impl PlayerColor {
             blocus_core::PlayerColor::Yellow => "YELLOW",
             blocus_core::PlayerColor::Red => "RED",
             blocus_core::PlayerColor::Green => "GREEN",
+            blocus_core::PlayerColor::Black => "BLACK",
+            blocus_core::PlayerColor::White => "WHITE",
         }
     }
 
@@ -102,6 +118,8 @@ impl PlayerColor {
             blocus_core::PlayerColor::Yellow => 1,
             blocus_core::PlayerColor::Red => 2,
             blocus_core::PlayerColor::Green => 3,
+            blocus_core::PlayerColor::Black => 4,
+            blocus_core::PlayerColor::White => 5,
         }
     }
 

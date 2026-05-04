@@ -1,33 +1,41 @@
-use blocus_core::{InputError, PLAYER_COLOR_COUNT, PlayerColor, TurnOrder, TurnOrderPolicy};
+use blocus_core::{
+    CLASSIC_COLOR_COUNT, InputError, PLAYER_COLOR_COUNT, PlayerColor, TurnOrder, TurnOrderPolicy,
+};
 use std::collections::HashSet;
 
 const CONST_ALL: [PlayerColor; PLAYER_COLOR_COUNT] = PlayerColor::ALL;
-const CONST_OFFICIAL_FIXED_ARRAY: [PlayerColor; PLAYER_COLOR_COUNT] =
+const CONST_OFFICIAL_FIXED_ARRAY: [PlayerColor; CLASSIC_COLOR_COUNT] =
     PlayerColor::OFFICIAL_FIXED_TURN_ORDER;
 
 const CONST_BLUE_INDEX: usize = PlayerColor::Blue.index();
 const CONST_YELLOW_INDEX: usize = PlayerColor::Yellow.index();
 const CONST_RED_INDEX: usize = PlayerColor::Red.index();
 const CONST_GREEN_INDEX: usize = PlayerColor::Green.index();
+const CONST_BLACK_INDEX: usize = PlayerColor::Black.index();
+const CONST_WHITE_INDEX: usize = PlayerColor::White.index();
 
 const CONST_FROM_INDEX_ZERO: Option<PlayerColor> = PlayerColor::from_index(0);
 const CONST_FROM_INDEX_THREE: Option<PlayerColor> = PlayerColor::from_index(3);
 const CONST_FROM_INDEX_FOUR: Option<PlayerColor> = PlayerColor::from_index(4);
+const CONST_FROM_INDEX_FIVE: Option<PlayerColor> = PlayerColor::from_index(5);
+const CONST_FROM_INDEX_SIX: Option<PlayerColor> = PlayerColor::from_index(6);
 
 const CONST_BLUE_NEXT_FIXED: PlayerColor = PlayerColor::Blue.next_in_official_fixed_order();
 const CONST_YELLOW_NEXT_FIXED: PlayerColor = PlayerColor::Yellow.next_in_official_fixed_order();
 const CONST_RED_NEXT_FIXED: PlayerColor = PlayerColor::Red.next_in_official_fixed_order();
 const CONST_GREEN_NEXT_FIXED: PlayerColor = PlayerColor::Green.next_in_official_fixed_order();
+const CONST_BLACK_NEXT_FIXED: PlayerColor = PlayerColor::Black.next_in_official_fixed_order();
+const CONST_WHITE_NEXT_FIXED: PlayerColor = PlayerColor::White.next_in_official_fixed_order();
 
 const CONST_BLUE_NAME: &str = PlayerColor::Blue.as_str();
 const CONST_YELLOW_NAME: &str = PlayerColor::Yellow.as_str();
 const CONST_RED_NAME: &str = PlayerColor::Red.as_str();
 const CONST_GREEN_NAME: &str = PlayerColor::Green.as_str();
+const CONST_BLACK_NAME: &str = PlayerColor::Black.as_str();
+const CONST_WHITE_NAME: &str = PlayerColor::White.as_str();
 
 const CONST_OFFICIAL_TURN_ORDER: TurnOrder = TurnOrder::OFFICIAL_FIXED;
 const CONST_OFFICIAL_TURN_ORDER_FIRST: PlayerColor = TurnOrder::OFFICIAL_FIXED.first();
-const CONST_OFFICIAL_TURN_ORDER_COLORS: [PlayerColor; PLAYER_COLOR_COUNT] =
-    TurnOrder::OFFICIAL_FIXED.colors();
 const CONST_OFFICIAL_TURN_ORDER_IS_FIXED: bool = TurnOrder::OFFICIAL_FIXED.is_official_fixed();
 
 const CONST_FIXED_POLICY_OK: Result<(), InputError> =
@@ -48,7 +56,7 @@ fn custom_turn_order() -> TurnOrder {
     order
 }
 
-fn assert_valid_turn_order(colors: [PlayerColor; PLAYER_COLOR_COUNT]) {
+fn assert_valid_turn_order(colors: [PlayerColor; CLASSIC_COLOR_COUNT]) {
     let Ok(order) = TurnOrder::try_new(colors) else {
         panic!("turn order {colors:?} should be valid");
     };
@@ -60,20 +68,21 @@ fn assert_valid_turn_order(colors: [PlayerColor; PLAYER_COLOR_COUNT]) {
         colors == PlayerColor::OFFICIAL_FIXED_TURN_ORDER
     );
 
-    for index in 0..PLAYER_COLOR_COUNT {
+    for index in 0..CLASSIC_COLOR_COUNT {
         let color = colors[index];
 
         assert_eq!(order.position_of(color), index);
         assert_eq!(
             order.next_after(color),
-            colors[(index + 1) % PLAYER_COLOR_COUNT]
+            colors[(index + 1) % CLASSIC_COLOR_COUNT]
         );
     }
 }
 
 #[test]
-fn player_color_count_matches_classic_blokus_colors() {
-    assert_eq!(PLAYER_COLOR_COUNT, 4);
+fn player_color_count_matches_supported_storage_slots() {
+    assert_eq!(PLAYER_COLOR_COUNT, 6);
+    assert_eq!(CLASSIC_COLOR_COUNT, 4);
 }
 
 #[test]
@@ -85,6 +94,8 @@ fn all_colors_are_in_stable_storage_order() {
             PlayerColor::Yellow,
             PlayerColor::Red,
             PlayerColor::Green,
+            PlayerColor::Black,
+            PlayerColor::White,
         ]
     );
 
@@ -118,6 +129,8 @@ fn stable_storage_order_contains_each_color_once() {
     assert!(colors.contains(&PlayerColor::Yellow));
     assert!(colors.contains(&PlayerColor::Red));
     assert!(colors.contains(&PlayerColor::Green));
+    assert!(colors.contains(&PlayerColor::Black));
+    assert!(colors.contains(&PlayerColor::White));
 }
 
 #[test]
@@ -126,11 +139,15 @@ fn player_color_indices_are_stable_storage_indices() {
     assert_eq!(PlayerColor::Yellow.index(), 1);
     assert_eq!(PlayerColor::Red.index(), 2);
     assert_eq!(PlayerColor::Green.index(), 3);
+    assert_eq!(PlayerColor::Black.index(), 4);
+    assert_eq!(PlayerColor::White.index(), 5);
 
     assert_eq!(CONST_BLUE_INDEX, 0);
     assert_eq!(CONST_YELLOW_INDEX, 1);
     assert_eq!(CONST_RED_INDEX, 2);
     assert_eq!(CONST_GREEN_INDEX, 3);
+    assert_eq!(CONST_BLACK_INDEX, 4);
+    assert_eq!(CONST_WHITE_INDEX, 5);
 }
 
 #[test]
@@ -139,12 +156,16 @@ fn player_color_from_index_accepts_only_valid_storage_indices() {
     assert_eq!(PlayerColor::from_index(1), Some(PlayerColor::Yellow));
     assert_eq!(PlayerColor::from_index(2), Some(PlayerColor::Red));
     assert_eq!(PlayerColor::from_index(3), Some(PlayerColor::Green));
-    assert_eq!(PlayerColor::from_index(4), None);
+    assert_eq!(PlayerColor::from_index(4), Some(PlayerColor::Black));
+    assert_eq!(PlayerColor::from_index(5), Some(PlayerColor::White));
+    assert_eq!(PlayerColor::from_index(6), None);
     assert_eq!(PlayerColor::from_index(usize::MAX), None);
 
     assert_eq!(CONST_FROM_INDEX_ZERO, Some(PlayerColor::Blue));
     assert_eq!(CONST_FROM_INDEX_THREE, Some(PlayerColor::Green));
-    assert_eq!(CONST_FROM_INDEX_FOUR, None);
+    assert_eq!(CONST_FROM_INDEX_FOUR, Some(PlayerColor::Black));
+    assert_eq!(CONST_FROM_INDEX_FIVE, Some(PlayerColor::White));
+    assert_eq!(CONST_FROM_INDEX_SIX, None);
 }
 
 #[test]
@@ -183,11 +204,21 @@ fn official_fixed_order_advances_blue_yellow_red_green() {
         PlayerColor::Green.next_in_official_fixed_order(),
         PlayerColor::Blue
     );
+    assert_eq!(
+        PlayerColor::Black.next_in_official_fixed_order(),
+        PlayerColor::White
+    );
+    assert_eq!(
+        PlayerColor::White.next_in_official_fixed_order(),
+        PlayerColor::Black
+    );
 
     assert_eq!(CONST_BLUE_NEXT_FIXED, PlayerColor::Yellow);
     assert_eq!(CONST_YELLOW_NEXT_FIXED, PlayerColor::Red);
     assert_eq!(CONST_RED_NEXT_FIXED, PlayerColor::Green);
     assert_eq!(CONST_GREEN_NEXT_FIXED, PlayerColor::Blue);
+    assert_eq!(CONST_BLACK_NEXT_FIXED, PlayerColor::White);
+    assert_eq!(CONST_WHITE_NEXT_FIXED, PlayerColor::Black);
 }
 
 #[test]
@@ -196,16 +227,22 @@ fn player_color_api_names_are_stable() {
     assert_eq!(PlayerColor::Yellow.as_str(), "yellow");
     assert_eq!(PlayerColor::Red.as_str(), "red");
     assert_eq!(PlayerColor::Green.as_str(), "green");
+    assert_eq!(PlayerColor::Black.as_str(), "black");
+    assert_eq!(PlayerColor::White.as_str(), "white");
 
     assert_eq!(PlayerColor::Blue.to_string(), "blue");
     assert_eq!(PlayerColor::Yellow.to_string(), "yellow");
     assert_eq!(PlayerColor::Red.to_string(), "red");
     assert_eq!(PlayerColor::Green.to_string(), "green");
+    assert_eq!(PlayerColor::Black.to_string(), "black");
+    assert_eq!(PlayerColor::White.to_string(), "white");
 
     assert_eq!(CONST_BLUE_NAME, "blue");
     assert_eq!(CONST_YELLOW_NAME, "yellow");
     assert_eq!(CONST_RED_NAME, "red");
     assert_eq!(CONST_GREEN_NAME, "green");
+    assert_eq!(CONST_BLACK_NAME, "black");
+    assert_eq!(CONST_WHITE_NAME, "white");
 }
 
 #[test]
@@ -249,15 +286,6 @@ fn turn_order_official_fixed_matches_rulebook_fixed_order() {
     assert_eq!(CONST_OFFICIAL_TURN_ORDER, TurnOrder::OFFICIAL_FIXED);
     assert_eq!(CONST_OFFICIAL_TURN_ORDER_FIRST, PlayerColor::Blue);
     assert_eq!(
-        CONST_OFFICIAL_TURN_ORDER_COLORS,
-        [
-            PlayerColor::Blue,
-            PlayerColor::Yellow,
-            PlayerColor::Red,
-            PlayerColor::Green,
-        ]
-    );
-    assert_eq!(
         CONST_OFFICIAL_TURN_ORDER_IS_FIXED,
         TurnOrder::OFFICIAL_FIXED.is_official_fixed()
     );
@@ -287,15 +315,15 @@ fn turn_order_try_new_accepts_representative_custom_permutation() {
 
 #[test]
 fn turn_order_try_new_accepts_exactly_permutations_of_all_colors() {
-    for first in PlayerColor::ALL {
-        for second in PlayerColor::ALL {
-            for third in PlayerColor::ALL {
-                for fourth in PlayerColor::ALL {
+    for first in PlayerColor::CLASSIC {
+        for second in PlayerColor::CLASSIC {
+            for third in PlayerColor::CLASSIC {
+                for fourth in PlayerColor::CLASSIC {
                     let colors = [first, second, third, fourth];
                     let unique_count = colors.into_iter().collect::<HashSet<_>>().len();
                     let result = TurnOrder::try_new(colors);
 
-                    if unique_count == PLAYER_COLOR_COUNT {
+                    if unique_count == CLASSIC_COLOR_COUNT {
                         assert_valid_turn_order(colors);
                     } else {
                         assert_eq!(result, Err(InputError::InvalidGameConfig));
@@ -304,6 +332,39 @@ fn turn_order_try_new_accepts_exactly_permutations_of_all_colors() {
             }
         }
     }
+}
+
+#[test]
+fn duo_turn_order_accepts_black_white_or_white_black() {
+    let black_first = TurnOrder::duo(PlayerColor::Black)
+        .unwrap_or_else(|error| panic!("black-first Duo order should be valid: {error}"));
+    let white_first = TurnOrder::duo(PlayerColor::White)
+        .unwrap_or_else(|error| panic!("white-first Duo order should be valid: {error}"));
+
+    assert_eq!(
+        black_first.colors(),
+        [PlayerColor::Black, PlayerColor::White]
+    );
+    assert_eq!(
+        white_first.colors(),
+        [PlayerColor::White, PlayerColor::Black]
+    );
+    assert_eq!(
+        black_first.next_after(PlayerColor::Black),
+        PlayerColor::White
+    );
+    assert_eq!(
+        black_first.next_after(PlayerColor::White),
+        PlayerColor::Black
+    );
+    assert_eq!(
+        black_first.validate_for_policy(TurnOrderPolicy::DuoAlternating),
+        Ok(())
+    );
+    assert_eq!(
+        TurnOrder::duo(PlayerColor::Blue),
+        Err(InputError::InvalidGameConfig)
+    );
 }
 
 #[test]
@@ -438,6 +499,8 @@ fn const_context_apis_work_for_player_color() {
             PlayerColor::Yellow,
             PlayerColor::Red,
             PlayerColor::Green,
+            PlayerColor::Black,
+            PlayerColor::White,
         ]
     );
     assert_eq!(
@@ -454,35 +517,34 @@ fn const_context_apis_work_for_player_color() {
     assert_eq!(CONST_YELLOW_INDEX, 1);
     assert_eq!(CONST_RED_INDEX, 2);
     assert_eq!(CONST_GREEN_INDEX, 3);
+    assert_eq!(CONST_BLACK_INDEX, 4);
+    assert_eq!(CONST_WHITE_INDEX, 5);
 
     assert_eq!(CONST_FROM_INDEX_ZERO, Some(PlayerColor::Blue));
     assert_eq!(CONST_FROM_INDEX_THREE, Some(PlayerColor::Green));
-    assert_eq!(CONST_FROM_INDEX_FOUR, None);
+    assert_eq!(CONST_FROM_INDEX_FOUR, Some(PlayerColor::Black));
+    assert_eq!(CONST_FROM_INDEX_FIVE, Some(PlayerColor::White));
+    assert_eq!(CONST_FROM_INDEX_SIX, None);
 
     assert_eq!(CONST_BLUE_NEXT_FIXED, PlayerColor::Yellow);
     assert_eq!(CONST_YELLOW_NEXT_FIXED, PlayerColor::Red);
     assert_eq!(CONST_RED_NEXT_FIXED, PlayerColor::Green);
     assert_eq!(CONST_GREEN_NEXT_FIXED, PlayerColor::Blue);
+    assert_eq!(CONST_BLACK_NEXT_FIXED, PlayerColor::White);
+    assert_eq!(CONST_WHITE_NEXT_FIXED, PlayerColor::Black);
 
     assert_eq!(CONST_BLUE_NAME, "blue");
     assert_eq!(CONST_YELLOW_NAME, "yellow");
     assert_eq!(CONST_RED_NAME, "red");
     assert_eq!(CONST_GREEN_NAME, "green");
+    assert_eq!(CONST_BLACK_NAME, "black");
+    assert_eq!(CONST_WHITE_NAME, "white");
 }
 
 #[test]
 fn const_context_apis_work_for_turn_order() {
     assert_eq!(CONST_OFFICIAL_TURN_ORDER, TurnOrder::OFFICIAL_FIXED);
     assert_eq!(CONST_OFFICIAL_TURN_ORDER_FIRST, PlayerColor::Blue);
-    assert_eq!(
-        CONST_OFFICIAL_TURN_ORDER_COLORS,
-        [
-            PlayerColor::Blue,
-            PlayerColor::Yellow,
-            PlayerColor::Red,
-            PlayerColor::Green,
-        ]
-    );
     assert_eq!(
         CONST_OFFICIAL_TURN_ORDER_IS_FIXED,
         TurnOrder::OFFICIAL_FIXED.is_official_fixed()

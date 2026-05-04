@@ -72,9 +72,9 @@ fn from_parts_masks_unknown_passed_bits() {
     let turn = TurnState::from_parts(PlayerColor::Yellow, u8::MAX, 4);
 
     assert_eq!(turn.current_color(), PlayerColor::Yellow);
-    assert_eq!(turn.passed_mask(), 0b1111);
+    assert_eq!(turn.passed_mask(), 0b11_1111);
     assert_eq!(turn.shared_color_turn_index(), 4);
-    assert_eq!(turn.passed_count(), 4);
+    assert_eq!(turn.passed_count(), 6);
     assert!(turn.all_colors_passed());
 }
 

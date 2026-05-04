@@ -87,6 +87,34 @@ impl BoardMask {
         Self { lanes }
     }
 
+    /// Creates a square playable mask from the top-left `size × size` cells of
+    /// the fixed physical board.
+    ///
+    /// `size` must be at most the physical board size. Larger values produce
+    /// the full physical playable mask.
+    #[must_use]
+    pub const fn square_playable_mask(size: u8) -> Self {
+        let bounded_size = if size > BOARD_SIZE { BOARD_SIZE } else { size };
+        let mut lanes = [0u128; BOARD_LANES];
+        let mut row = 0u8;
+
+        while row < bounded_size {
+            let mut col = 0u8;
+
+            while col < bounded_size {
+                let bit_index = row as usize * ROW_STRIDE as usize + col as usize;
+                let lane = bit_index / u128::BITS as usize;
+                let offset = bit_index % u128::BITS as usize;
+                lanes[lane] |= 1u128 << offset;
+                col += 1;
+            }
+
+            row += 1;
+        }
+
+        Self { lanes }
+    }
+
     /// Creates a board mask from raw lanes after validating that all set bits
     /// are playable board cells.
     ///
