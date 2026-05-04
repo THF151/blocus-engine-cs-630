@@ -118,30 +118,76 @@ Provide links to notable counterexamples where guidelines from other teams did n
 
 How did the requirement to support Blokus Duo affect your design decisions?
 
-- **Initial Design Decisions:** `[Description]`
-- **Changes Made for Duo Support:** `[Description]`
-- **Challenges Encountered:** `[Description]`
-- **Solutions Implemented:** `[Description]`
+For the engine core, the Duo change request showed that our first design was too focused on Classic Blokus. Several parts of the engine assumed four Classic colors, a 20×20 board, fixed corner starts, and Classic scoring. To support Duo cleanly, we changed the design so that the engine is configured by game mode instead of hard-coding one ruleset. When we discussed this before starting the implementation, we deliberately chose not to include the future duo mode into our requirements, as we wanted to find out if the LLMs would catch this level of abstraction by themselves (which they did not).
+
+- **Initial Design Decisions:**
+  The original engine was designed around Classic Blokus. It used the Classic colors blue, yellow, red, and green, a 20×20 board, fixed starting corners, and Classic turn order. This worked well for Classic two-player, three-player, and four-player modes, but it did not fully support game variants.
+- **Changes Made for Duo Support:**
+  We added a new `GameMode::Duo`, new player colors `Black` and `White`, a 14×14 Duo board, Duo starting points at `(4, 4)` and `(9, 9)`, Duo turn order, and advanced-only scoring. We also updated move generation, move validation, board validation, scoring, hashing, JSON serialization, Python bindings, examples, and tests to be aware of the selected game mode.
+- **Challenges Encountered:**
+  The biggest challenge was removing Classic-only assumptions. Color arrays had to support six stored color slots while each mode only uses its active colors. Board logic had to support both 20×20 Classic and 14×14 Duo. Opening move validation also had to change because Duo does not use the four Classic corners.
+- **Solutions Implemented:**
+  We introduced mode-aware configuration and rules. Each game mode now defines its active colors, board size, turn-order policy, opening policy, and scoring restrictions. Classic modes still use blue, yellow, red, and green on a 20×20 board. Duo uses black and white on a 14×14 board with two shared starting points. This allowed us to reuse the same core engine while supporting different rule variants.
 
 ### Configuration Approach
 
 How did you implement configuration to support both Classic and Duo modes?
 
-- `[Description of configuration approach]`
+We implemented configuration through `GameMode`, `GameConfig`, `PlayerSlots`, `TurnOrder`, `Ruleset`, and `BoardGeometry`.
+
+Each mode describes the rules it needs:
+
+- Classic modes use the active colors `Blue`, `Yellow`, `Red`, and `Green`.
+- Duo uses the active colors `Black` and `White`.
+- Classic modes use a 20×20 board.
+- Duo uses a 14×14 board.
+- Classic opening moves must cover fixed corners.
+- Duo opening moves must cover one of the two starting points, `(4, 4)` or `(9, 9)`.
+- Duo only allows advanced scoring.
+
+This approach kept the Rust core engine shared across all modes. Instead of creating a separate Duo engine, the same engine reads the mode configuration and applies the correct rules.
+By keeping the API for the engine relatively stable, this only needed minimal changes for the python and flutter counterparts.
+In a future iteration, the flutter frontend could call the rust engine directly for a singleplayer, therefore also directly adopting the new duo variant.
 
 ### Testing Strategy
 
 How did you update your test suite to cover both modes?
 
-- `[Description of testing strategy]`
+We updated both the Rust and Python test suites to cover Classic and Duo behavior.
+
+For Rust, we added and updated tests for:
+
+- black and white player colors
+- Duo turn order
+- Duo board geometry
+- Duo ruleset configuration
+- Duo opening rules
+- active-color validation
+- mode-aware move generation
+- scoring restrictions
+- compact game state validation
+
+For Python, we added tests for the public API:
+
+- `GameMode.DUO`
+- `PlayerColor.BLACK` and `PlayerColor.WHITE`
+- `GameConfig.duo(...)`
+- 14×14 board matrix output
+- legal Duo opening moves
+- rejection of invalid Duo openings
+- rejection of moves outside the 14×14 board
+- JSON round trips for Duo game states
+- rejection of Basic scoring in Duo
+
+This gave us regression coverage for the old Classic behavior and new coverage for Duo-specific behavior.
 
 ---
 
 ## Repository Links
 
-- **Project Repository:** `[Link to repository]`
-- **Issue Tracker:** `[Link to issues]`
-- **CI/CD Pipeline:** `[Link to CI/CD, if used]`
+- **Project Repository:** `https://github.com/THF151/blocus-engine-cs-630`
+- **Issue Tracker:** `We did not use an issue tracker. Requirements were kept in markdown files.`
+- **CI/CD Pipeline:** `https://github.com/THF151/blocus-engine-cs-630/blob/main/.github/workflows/ci.yml`
 
 ---
 
