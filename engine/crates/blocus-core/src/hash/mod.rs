@@ -7,8 +7,8 @@
 //! version histories share the same hash.
 
 use crate::{
-    BOARD_SIZE, BoardMask, GameMode, GameState, GameStatus, LastPieceByColor, PIECE_COUNT,
-    PLAYER_COLOR_COUNT, PieceId, PlayerColor, ScoringMode, TurnState, ZobristHash,
+    BOARD_SIZE, BoardMask, GameMode, GameState, GameStatus, LastPieceByColor,
+    MAX_PLAYER_COLOR_COUNT, PIECE_COUNT, PieceId, PlayerColor, ScoringMode, TurnState, ZobristHash,
 };
 
 /// Fixed domain seed for position hashing.
@@ -139,7 +139,7 @@ pub fn xor_last_piece_transition(
 fn board_hash(state: &GameState) -> u64 {
     let mut hash = 0u64;
 
-    for color in PlayerColor::ALL {
+    for color in state.mode.active_colors().iter().copied() {
         hash = xor_board_mask_cells(hash, color, state.board.occupied(color));
     }
 
@@ -166,7 +166,7 @@ fn xor_board_mask_cells(mut hash: u64, color: PlayerColor, mask: BoardMask) -> u
 fn inventory_hash(state: &GameState) -> u64 {
     let mut hash = 0u64;
 
-    for color in PlayerColor::ALL {
+    for color in state.mode.active_colors().iter().copied() {
         let used_mask = state.inventories[color.index()].used_mask();
 
         for raw_piece_id in 0..PIECE_COUNT {
@@ -200,6 +200,7 @@ fn game_mode_hash(mode: GameMode) -> u64 {
         GameMode::TwoPlayer => 2,
         GameMode::ThreePlayer => 3,
         GameMode::FourPlayer => 4,
+        GameMode::Duo => 5,
     };
 
     zobrist_const(HASH_MODE_SALT, value)
@@ -226,7 +227,7 @@ fn game_status_hash(status: GameStatus) -> u64 {
 fn turn_order_hash(turn_order: crate::TurnOrder) -> u64 {
     let mut hash = 0u64;
 
-    for (index, color) in turn_order.colors().into_iter().enumerate() {
+    for (index, color) in turn_order.colors_slice().iter().copied().enumerate() {
         let index = u64::try_from(index)
             .unwrap_or_else(|_| unreachable!("turn order index always fits in u64"));
         hash ^= zobrist_const(HASH_TURN_ORDER_SALT ^ (index << 8), color_index_u64(color));
@@ -239,7 +240,7 @@ fn player_slot_topology_hash(slots: crate::PlayerSlots) -> u64 {
     let mut hash = 0u64;
     let shared_color = slots.shared_color();
 
-    for color in PlayerColor::ALL {
+    for color in slots.mode().active_colors().iter().copied() {
         let slot_kind = if shared_color == Some(color) {
             2
         } else {
@@ -260,6 +261,8 @@ const fn color_index_u64(color: PlayerColor) -> u64 {
         PlayerColor::Yellow => 1,
         PlayerColor::Red => 2,
         PlayerColor::Green => 3,
+        PlayerColor::Black => 4,
+        PlayerColor::White => 5,
     }
 }
 
@@ -275,6 +278,6 @@ const fn splitmix64_const(mut value: u64) -> u64 {
 }
 
 const _: () = {
-    assert!(PLAYER_COLOR_COUNT == 4);
+    assert!(MAX_PLAYER_COLOR_COUNT == 6);
     assert!(BOARD_SIZE == 20);
 };

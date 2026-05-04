@@ -35,6 +35,7 @@ impl GameMode {
             "four_player" | "FOUR_PLAYER" | "FourPlayer" => {
                 Ok(Self::from_core(blocus_core::GameMode::FourPlayer))
             }
+            "duo" | "DUO" | "Duo" => Ok(Self::from_core(blocus_core::GameMode::Duo)),
             _ => {
                 let _ = value;
                 Err(crate::conversion::invalid_game_config_error())
@@ -57,12 +58,18 @@ impl GameMode {
         Self::from_core(blocus_core::GameMode::FourPlayer)
     }
 
+    #[staticmethod]
+    fn duo() -> Self {
+        Self::from_core(blocus_core::GameMode::Duo)
+    }
+
     #[getter]
     fn name(&self) -> &'static str {
         match self.inner {
             blocus_core::GameMode::TwoPlayer => "TWO_PLAYER",
             blocus_core::GameMode::ThreePlayer => "THREE_PLAYER",
             blocus_core::GameMode::FourPlayer => "FOUR_PLAYER",
+            blocus_core::GameMode::Duo => "DUO",
         }
     }
 
@@ -72,6 +79,7 @@ impl GameMode {
             blocus_core::GameMode::TwoPlayer => "two_player",
             blocus_core::GameMode::ThreePlayer => "three_player",
             blocus_core::GameMode::FourPlayer => "four_player",
+            blocus_core::GameMode::Duo => "duo",
         }
     }
 
@@ -88,6 +96,7 @@ impl GameMode {
             blocus_core::GameMode::TwoPlayer => 2,
             blocus_core::GameMode::ThreePlayer => 3,
             blocus_core::GameMode::FourPlayer => 4,
+            blocus_core::GameMode::Duo => 5,
         }
     }
 
@@ -267,6 +276,16 @@ impl PlayerSlots {
             .map_err(map_input_error)
     }
 
+    #[staticmethod]
+    fn duo(black_player: &str, white_player: &str) -> PyResult<Self> {
+        let black_player = parse_player_id(black_player, "black_player")?;
+        let white_player = parse_player_id(white_player, "white_player")?;
+
+        blocus_core::PlayerSlots::duo(black_player, white_player)
+            .map(Self::from_core)
+            .map_err(map_input_error)
+    }
+
     fn __repr__(&self) -> String {
         format!("{:?}", self.inner)
     }
@@ -309,17 +328,7 @@ impl GameConfig {
     ) -> PyResult<Self> {
         let game_id = blocus_core::GameId::from_uuid(parse_uuid(game_id, "game_id")?);
 
-        let [first, second, third, fourth]: [PlayerColor; 4] = turn_order
-            .try_into()
-            .map_err(|_values: Vec<PlayerColor>| crate::conversion::invalid_game_config_error())?;
-
-        let turn_order = blocus_core::TurnOrder::try_new([
-            first.as_core(),
-            second.as_core(),
-            third.as_core(),
-            fourth.as_core(),
-        ])
-        .map_err(map_input_error)?;
+        let turn_order = parse_turn_order_for_mode(mode.as_core(), turn_order)?;
 
         blocus_core::GameConfig::try_new(
             game_id,
@@ -371,6 +380,35 @@ impl GameConfig {
         )
     }
 
+    #[staticmethod]
+    #[pyo3(signature = (game_id, black_player, white_player, scoring=None, first_color=None))]
+    fn duo(
+        game_id: &str,
+        black_player: &str,
+        white_player: &str,
+        scoring: Option<&ScoringMode>,
+        first_color: Option<&PlayerColor>,
+    ) -> PyResult<Self> {
+        let game_id = blocus_core::GameId::from_uuid(parse_uuid(game_id, "game_id")?);
+        let black_player = parse_player_id(black_player, "black_player")?;
+        let white_player = parse_player_id(white_player, "white_player")?;
+        let scoring = scoring.map_or(blocus_core::ScoringMode::Advanced, ScoringMode::as_core);
+        let first_color = first_color.map_or(blocus_core::PlayerColor::Black, PlayerColor::as_core);
+        let slots =
+            blocus_core::PlayerSlots::duo(black_player, white_player).map_err(map_input_error)?;
+        let turn_order = blocus_core::TurnOrder::duo(first_color).map_err(map_input_error)?;
+
+        blocus_core::GameConfig::try_new(
+            game_id,
+            blocus_core::GameMode::Duo,
+            scoring,
+            turn_order,
+            slots,
+        )
+        .map(Self::from_core)
+        .map_err(map_input_error)
+    }
+
     #[getter]
     fn game_id(&self) -> String {
         self.inner.game_id().to_string()
@@ -416,6 +454,43 @@ impl GameConfig {
             CompareOp::Eq => self.inner == other.inner,
             CompareOp::Ne => self.inner != other.inner,
             _ => false,
+        }
+    }
+}
+
+fn parse_turn_order_for_mode(
+    mode: blocus_core::GameMode,
+    turn_order: Vec<PlayerColor>,
+) -> PyResult<blocus_core::TurnOrder> {
+    match mode {
+        blocus_core::GameMode::TwoPlayer
+        | blocus_core::GameMode::ThreePlayer
+        | blocus_core::GameMode::FourPlayer => {
+            let [first, second, third, fourth]: [PlayerColor; 4] =
+                turn_order.try_into().map_err(|_values: Vec<PlayerColor>| {
+                    crate::conversion::invalid_game_config_error()
+                })?;
+
+            blocus_core::TurnOrder::try_new([
+                first.as_core(),
+                second.as_core(),
+                third.as_core(),
+                fourth.as_core(),
+            ])
+            .map_err(map_input_error)
+        }
+        blocus_core::GameMode::Duo => {
+            let [first, second]: [PlayerColor; 2] =
+                turn_order.try_into().map_err(|_values: Vec<PlayerColor>| {
+                    crate::conversion::invalid_game_config_error()
+                })?;
+            let order = blocus_core::TurnOrder::duo(first.as_core()).map_err(map_input_error)?;
+
+            if order.colors() == [first.as_core(), second.as_core()] {
+                Ok(order)
+            } else {
+                Err(crate::conversion::invalid_game_config_error())
+            }
         }
     }
 }

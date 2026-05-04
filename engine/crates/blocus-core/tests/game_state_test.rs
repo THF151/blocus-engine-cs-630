@@ -85,7 +85,7 @@ fn game_state_size_is_documented() {
 
     assert!(size > 0);
     assert!(
-        size <= 544,
+        size <= 736,
         "GameState should stay compact enough for AI search cloning; actual size: {size}"
     );
 }

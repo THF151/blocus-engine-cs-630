@@ -5,8 +5,8 @@
 
 use crate::pieces::{PieceInventory, PieceRepository};
 use crate::{
-    DomainError, GameMode, GameState, GameStatus, PIECE_COUNT, PieceId, PlayerColor, PlayerId,
-    RuleViolation, ScoreBoard, ScoreEntry, ScoringMode,
+    DomainError, GameMode, GameState, GameStatus, InputError, PIECE_COUNT, PieceId, PlayerColor,
+    PlayerId, RuleViolation, ScoreBoard, ScoreEntry, ScoringMode,
 };
 
 /// Scores a finished game.
@@ -20,6 +20,14 @@ pub fn score_game(
     repository: &PieceRepository,
     scoring: ScoringMode,
 ) -> Result<ScoreBoard, DomainError> {
+    if state.mode == GameMode::Duo
+        && (state.scoring != ScoringMode::Advanced
+            || scoring != ScoringMode::Advanced
+            || scoring != state.scoring)
+    {
+        return Err(InputError::InvalidGameConfig.into());
+    }
+
     if state.status != GameStatus::Finished {
         return Err(RuleViolation::GameNotFinished.into());
     }
@@ -28,7 +36,7 @@ pub fn score_game(
 
     match state.mode {
         GameMode::TwoPlayer => {
-            for color in PlayerColor::ALL {
+            for color in state.mode.active_colors().iter().copied() {
                 let Some(player_id) = state.player_slots.controller_of(color) else {
                     continue;
                 };
@@ -40,7 +48,7 @@ pub fn score_game(
         GameMode::ThreePlayer => {
             let shared_color = state.player_slots.shared_color();
 
-            for color in PlayerColor::ALL {
+            for color in state.mode.active_colors().iter().copied() {
                 if Some(color) == shared_color {
                     continue;
                 }
@@ -53,8 +61,8 @@ pub fn score_game(
                 entries.push(ScoreEntry { player_id, score });
             }
         }
-        GameMode::FourPlayer => {
-            for color in PlayerColor::ALL {
+        GameMode::FourPlayer | GameMode::Duo => {
+            for color in state.mode.active_colors().iter().copied() {
                 let Some(player_id) = state.player_slots.controller_of(color) else {
                     continue;
                 };

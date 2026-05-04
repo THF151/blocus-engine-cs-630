@@ -37,7 +37,11 @@ fn from_occupied_by_color_preserves_per_color_masks() {
     let red = BoardMask::from_index(index(19, 19));
     let green = BoardMask::from_index(index(19, 0));
 
-    let masks = [blue, yellow, red, green];
+    let mut masks = [BoardMask::EMPTY; PLAYER_COLOR_COUNT];
+    masks[PlayerColor::Blue.index()] = blue;
+    masks[PlayerColor::Yellow.index()] = yellow;
+    masks[PlayerColor::Red.index()] = red;
+    masks[PlayerColor::Green.index()] = green;
     let state = BoardState::from_occupied_by_color(masks);
 
     assert_eq!(state.occupied_by_color(), masks);
@@ -100,7 +104,12 @@ fn occupied_all_derives_union_of_all_color_masks() {
     let red = BoardMask::from_index(index(19, 19));
     let green = BoardMask::from_index(index(19, 0));
 
-    let state = BoardState::from_occupied_by_color([blue, yellow, red, green]);
+    let mut masks = [BoardMask::EMPTY; PLAYER_COLOR_COUNT];
+    masks[PlayerColor::Blue.index()] = blue;
+    masks[PlayerColor::Yellow.index()] = yellow;
+    masks[PlayerColor::Red.index()] = red;
+    masks[PlayerColor::Green.index()] = green;
+    let state = BoardState::from_occupied_by_color(masks);
     let occupied_all = state.occupied_all();
 
     assert_eq!(occupied_all.count(), 4);

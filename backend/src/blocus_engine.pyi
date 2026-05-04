@@ -15,6 +15,8 @@ class PlayerColor:
     YELLOW: ClassVar[PlayerColor]
     RED: ClassVar[PlayerColor]
     GREEN: ClassVar[PlayerColor]
+    BLACK: ClassVar[PlayerColor]
+    WHITE: ClassVar[PlayerColor]
 
     def __init__(self, value: str) -> None: ...
     @staticmethod
@@ -25,6 +27,10 @@ class PlayerColor:
     def red() -> PlayerColor: ...
     @staticmethod
     def green() -> PlayerColor: ...
+    @staticmethod
+    def black() -> PlayerColor: ...
+    @staticmethod
+    def white() -> PlayerColor: ...
     @property
     def name(self) -> str: ...
     @property
@@ -64,6 +70,7 @@ class GameMode:
     TWO_PLAYER: ClassVar[GameMode]
     THREE_PLAYER: ClassVar[GameMode]
     FOUR_PLAYER: ClassVar[GameMode]
+    DUO: ClassVar[GameMode]
 
     def __init__(self, value: str) -> None: ...
     @staticmethod
@@ -72,6 +79,8 @@ class GameMode:
     def three_player() -> GameMode: ...
     @staticmethod
     def four_player() -> GameMode: ...
+    @staticmethod
+    def duo() -> GameMode: ...
     @property
     def name(self) -> str: ...
     @property
@@ -158,6 +167,11 @@ class PlayerSlots:
     def four_player(
         assignments: Sequence[tuple[PlayerColor, str]],
     ) -> PlayerSlots: ...
+    @staticmethod
+    def duo(
+        black_player: str,
+        white_player: str,
+    ) -> PlayerSlots: ...
 
 class GameConfig:
     def __init__(
@@ -181,6 +195,14 @@ class GameConfig:
         assignments: Sequence[tuple[PlayerColor, str]],
         scoring: ScoringMode,
         turn_order: Sequence[PlayerColor],
+    ) -> GameConfig: ...
+    @staticmethod
+    def duo(
+        game_id: str,
+        black_player: str,
+        white_player: str,
+        scoring: ScoringMode | None = None,
+        first_color: PlayerColor | None = None,
     ) -> GameConfig: ...
     @property
     def game_id(self) -> str: ...
@@ -212,6 +234,10 @@ class BoardSnapshot:
     def red(self) -> list[BoardCell]: ...
     @property
     def green(self) -> list[BoardCell]: ...
+    @property
+    def black(self) -> list[BoardCell]: ...
+    @property
+    def white(self) -> list[BoardCell]: ...
     @property
     def occupied(self) -> list[BoardCell]: ...
     @property
@@ -288,6 +314,8 @@ class GameState:
     def board_is_empty(self) -> bool: ...
     @property
     def board(self) -> BoardSnapshot: ...
+    @property
+    def board_size(self) -> int: ...
     @property
     def turn_order(self) -> list[PlayerColor]: ...
     @property

@@ -329,6 +329,8 @@ fn player_slots_expose_controllers_array() {
             Some(player_id(2)),
             Some(player_id(1)),
             Some(player_id(2)),
+            None,
+            None,
         ]
     );
 }

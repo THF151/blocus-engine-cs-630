@@ -3,10 +3,26 @@
 use crate::error::InputError;
 use core::fmt;
 
-/// Number of Blokus player colors.
-pub const PLAYER_COLOR_COUNT: usize = 4;
+/// Number of colors in classic Blokus.
+pub const CLASSIC_COLOR_COUNT: usize = 4;
 
-/// One of the four Blokus colors.
+/// Number of colors in Blokus Duo.
+pub const DUO_COLOR_COUNT: usize = 2;
+
+/// Maximum number of physical color slots supported by the engine.
+pub const MAX_PLAYER_COLOR_COUNT: usize = 6;
+
+/// Number of stored player-color slots.
+///
+/// This name is kept for compatibility with existing callers that construct
+/// compact state arrays directly. Gameplay code should use
+/// `GameMode::active_colors()` rather than iterating every storage slot.
+pub const PLAYER_COLOR_COUNT: usize = MAX_PLAYER_COLOR_COUNT;
+
+const CLASSIC_TURN_ORDER_LEN: u8 = 4;
+const DUO_TURN_ORDER_LEN: u8 = 2;
+
+/// One Blokus color identity.
 ///
 /// Color identity is separate from turn order and board-corner assignment.
 /// A color has a stable storage index, but game setup decides turn order and
@@ -21,17 +37,35 @@ pub enum PlayerColor {
     Red,
     /// Green player color.
     Green,
+    /// Black player color, used by Blokus Duo.
+    Black,
+    /// White player color, used by Blokus Duo.
+    White,
 }
 
 impl PlayerColor {
-    /// All colors in stable storage order.
+    /// Classic colors in stable storage order.
+    pub const CLASSIC: [Self; CLASSIC_COLOR_COUNT] =
+        [Self::Blue, Self::Yellow, Self::Red, Self::Green];
+
+    /// Duo colors in stable storage order.
+    pub const DUO: [Self; DUO_COLOR_COUNT] = [Self::Black, Self::White];
+
+    /// All supported colors in stable storage order.
     ///
     /// This order is used for fixed-size arrays, hashing, and indexing. It is
     /// not necessarily the gameplay turn order of every game.
-    pub const ALL: [Self; PLAYER_COLOR_COUNT] = [Self::Blue, Self::Yellow, Self::Red, Self::Green];
+    pub const ALL: [Self; MAX_PLAYER_COLOR_COUNT] = [
+        Self::Blue,
+        Self::Yellow,
+        Self::Red,
+        Self::Green,
+        Self::Black,
+        Self::White,
+    ];
 
     /// Official clockwise order: blue, yellow, red, green.
-    pub const OFFICIAL_FIXED_TURN_ORDER: [Self; PLAYER_COLOR_COUNT] =
+    pub const OFFICIAL_FIXED_TURN_ORDER: [Self; CLASSIC_COLOR_COUNT] =
         [Self::Blue, Self::Yellow, Self::Red, Self::Green];
 
     /// Returns this color's stable storage index.
@@ -44,6 +78,8 @@ impl PlayerColor {
             Self::Yellow => 1,
             Self::Red => 2,
             Self::Green => 3,
+            Self::Black => 4,
+            Self::White => 5,
         }
     }
 
@@ -55,8 +91,28 @@ impl PlayerColor {
             1 => Some(Self::Yellow),
             2 => Some(Self::Red),
             3 => Some(Self::Green),
+            4 => Some(Self::Black),
+            5 => Some(Self::White),
             _ => None,
         }
+    }
+
+    /// Returns whether this is a classic Blokus color.
+    #[must_use]
+    pub const fn is_classic(self) -> bool {
+        matches!(self, Self::Blue | Self::Yellow | Self::Red | Self::Green)
+    }
+
+    /// Returns whether this is a Blokus Duo color.
+    #[must_use]
+    pub const fn is_duo(self) -> bool {
+        matches!(self, Self::Black | Self::White)
+    }
+
+    /// Returns the bit associated with this color in compact color masks.
+    #[must_use]
+    pub const fn bit(self) -> u8 {
+        1u8 << self.index()
     }
 
     /// Returns the next color in the official clockwise order.
@@ -71,6 +127,8 @@ impl PlayerColor {
             Self::Yellow => Self::Red,
             Self::Red => Self::Green,
             Self::Green => Self::Blue,
+            Self::Black => Self::White,
+            Self::White => Self::Black,
         }
     }
 
@@ -82,6 +140,8 @@ impl PlayerColor {
             Self::Yellow => "yellow",
             Self::Red => "red",
             Self::Green => "green",
+            Self::Black => "black",
+            Self::White => "white",
         }
     }
 }
@@ -106,18 +166,32 @@ pub enum TurnOrderPolicy {
     /// This is the policy for the official two-player and three-player
     /// variations.
     OfficialFixed,
+
+    /// The order must be black/white or white/black.
+    ///
+    /// This is the policy for Blokus Duo.
+    DuoAlternating,
 }
 
-/// Game-specific cyclic turn order over all four colors.
+/// Game-specific cyclic turn order over active colors.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct TurnOrder {
-    colors: [PlayerColor; PLAYER_COLOR_COUNT],
+    colors: [PlayerColor; MAX_PLAYER_COLOR_COUNT],
+    len: u8,
 }
 
 impl TurnOrder {
     /// Official fixed order: blue, yellow, red, green.
     pub const OFFICIAL_FIXED: Self = Self {
-        colors: PlayerColor::OFFICIAL_FIXED_TURN_ORDER,
+        colors: [
+            PlayerColor::Blue,
+            PlayerColor::Yellow,
+            PlayerColor::Red,
+            PlayerColor::Green,
+            PlayerColor::Blue,
+            PlayerColor::Blue,
+        ],
+        len: CLASSIC_TURN_ORDER_LEN,
     };
 
     /// Creates a turn order from a permutation of all four colors.
@@ -126,18 +200,72 @@ impl TurnOrder {
     ///
     /// Returns [`InputError::InvalidGameConfig`] if the order does not contain
     /// each color exactly once.
-    pub const fn try_new(colors: [PlayerColor; PLAYER_COLOR_COUNT]) -> Result<Self, InputError> {
+    pub const fn try_new(colors: [PlayerColor; CLASSIC_COLOR_COUNT]) -> Result<Self, InputError> {
         if contains_all_colors_once(colors) {
-            Ok(Self { colors })
+            Ok(Self {
+                colors: [
+                    colors[0],
+                    colors[1],
+                    colors[2],
+                    colors[3],
+                    PlayerColor::Blue,
+                    PlayerColor::Blue,
+                ],
+                len: CLASSIC_TURN_ORDER_LEN,
+            })
         } else {
             Err(InputError::InvalidGameConfig)
         }
     }
 
+    /// Creates a Duo turn order from the first color.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`InputError::InvalidGameConfig`] unless `first_color` is black
+    /// or white.
+    pub const fn duo(first_color: PlayerColor) -> Result<Self, InputError> {
+        let second_color = match first_color {
+            PlayerColor::Black => PlayerColor::White,
+            PlayerColor::White => PlayerColor::Black,
+            _ => return Err(InputError::InvalidGameConfig),
+        };
+
+        Ok(Self {
+            colors: [
+                first_color,
+                second_color,
+                PlayerColor::Blue,
+                PlayerColor::Blue,
+                PlayerColor::Blue,
+                PlayerColor::Blue,
+            ],
+            len: DUO_TURN_ORDER_LEN,
+        })
+    }
+
     /// Returns the underlying color order.
     #[must_use]
-    pub const fn colors(self) -> [PlayerColor; PLAYER_COLOR_COUNT] {
-        self.colors
+    pub fn colors(self) -> Vec<PlayerColor> {
+        self.colors[..usize::from(self.len)].to_vec()
+    }
+
+    /// Returns the active color order without allocation.
+    #[must_use]
+    pub fn colors_slice(&self) -> &[PlayerColor] {
+        &self.colors[..usize::from(self.len)]
+    }
+
+    /// Returns the number of colors in the cyclic turn order.
+    #[must_use]
+    pub const fn len(self) -> usize {
+        self.len as usize
+    }
+
+    /// Returns true if the turn order contains no colors.
+    #[must_use]
+    pub const fn is_empty(self) -> bool {
+        self.len == 0
     }
 
     /// Returns the first color to act.
@@ -150,7 +278,12 @@ impl TurnOrder {
     #[must_use]
     pub const fn is_official_fixed(self) -> bool {
         matches!(
-            self.colors,
+            [
+                self.colors[0],
+                self.colors[1],
+                self.colors[2],
+                self.colors[3]
+            ],
             [
                 PlayerColor::Blue,
                 PlayerColor::Yellow,
@@ -167,7 +300,12 @@ impl TurnOrder {
     #[must_use]
     pub const fn is_clockwise_rotation(self) -> bool {
         matches!(
-            self.colors,
+            [
+                self.colors[0],
+                self.colors[1],
+                self.colors[2],
+                self.colors[3]
+            ],
             [
                 PlayerColor::Blue,
                 PlayerColor::Yellow,
@@ -199,16 +337,33 @@ impl TurnOrder {
     #[must_use]
     pub const fn position_of(self, color: PlayerColor) -> usize {
         let target = color.index();
+        let mut position = 0usize;
 
-        if self.colors[0].index() == target {
-            0
-        } else if self.colors[1].index() == target {
-            1
-        } else if self.colors[2].index() == target {
-            2
-        } else {
-            3
+        while position < self.len as usize {
+            if self.colors[position].index() == target {
+                return position;
+            }
+
+            position += 1;
         }
+
+        0
+    }
+
+    /// Returns whether the active turn order contains this color.
+    #[must_use]
+    pub const fn contains(self, color: PlayerColor) -> bool {
+        let mut position = 0usize;
+
+        while position < self.len as usize {
+            if self.colors[position].index() == color.index() {
+                return true;
+            }
+
+            position += 1;
+        }
+
+        false
     }
 
     /// Returns the next color after `color` in this cyclic order.
@@ -216,7 +371,7 @@ impl TurnOrder {
     pub const fn next_after(self, color: PlayerColor) -> PlayerColor {
         let position = self.position_of(color);
 
-        self.colors[(position + 1) % PLAYER_COLOR_COUNT]
+        self.colors[(position + 1) % self.len()]
     }
 
     /// Validates this turn order against a variant's policy.
@@ -241,6 +396,18 @@ impl TurnOrder {
                     Err(InputError::InvalidGameConfig)
                 }
             }
+            TurnOrderPolicy::DuoAlternating => {
+                if self.len == DUO_TURN_ORDER_LEN
+                    && ((self.colors[0].index() == PlayerColor::Black.index()
+                        && self.colors[1].index() == PlayerColor::White.index())
+                        || (self.colors[0].index() == PlayerColor::White.index()
+                            && self.colors[1].index() == PlayerColor::Black.index()))
+                {
+                    Ok(())
+                } else {
+                    Err(InputError::InvalidGameConfig)
+                }
+            }
         }
     }
 }
@@ -251,12 +418,16 @@ impl Default for TurnOrder {
     }
 }
 
-const fn contains_all_colors_once(colors: [PlayerColor; PLAYER_COLOR_COUNT]) -> bool {
-    let mut seen = [false; PLAYER_COLOR_COUNT];
+const fn contains_all_colors_once(colors: [PlayerColor; CLASSIC_COLOR_COUNT]) -> bool {
+    let mut seen = [false; CLASSIC_COLOR_COUNT];
     let mut position = 0;
 
-    while position < PLAYER_COLOR_COUNT {
+    while position < CLASSIC_COLOR_COUNT {
         let color_index = colors[position].index();
+
+        if color_index >= CLASSIC_COLOR_COUNT {
+            return false;
+        }
 
         if seen[color_index] {
             return false;

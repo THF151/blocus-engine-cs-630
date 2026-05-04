@@ -7,9 +7,10 @@ use crate::api::state::LastPieceByColor;
 use crate::pieces::{CanonicalPiece, PieceInventory, PieceRepository};
 use crate::{
     BoardMask, BoardState, Command, DomainError, DomainEvent, DomainEventKind, DomainResponse,
-    DomainResponseKind, EngineError, GameConfig, GameResult, GameState, GameStatus, LegalMove,
-    PIECE_COUNT, PLAYER_COLOR_COUNT, PassCommand, PieceId, PlaceCommand, PlayerColor, PlayerId,
-    RuleViolation, ScoringMode, StateSchemaVersion, StateVersion, standard_repository,
+    DomainResponseKind, EngineError, GameConfig, GameMode, GameResult, GameState, GameStatus,
+    LegalMove, MAX_PLAYER_COLOR_COUNT, PIECE_COUNT, PassCommand, PieceId, PlaceCommand,
+    PlayerColor, PlayerId, RuleViolation, ScoringMode, StateSchemaVersion, StateVersion,
+    standard_repository,
 };
 
 /// Pure Rust Blocus engine facade.
@@ -62,7 +63,7 @@ impl BlocusEngine {
             board: BoardState::EMPTY,
             turn_order: config.turn_order(),
             player_slots: config.player_slots(),
-            inventories: [PieceInventory::EMPTY; PLAYER_COLOR_COUNT],
+            inventories: [PieceInventory::EMPTY; MAX_PLAYER_COLOR_COUNT],
             last_piece_by_color: LastPieceByColor::EMPTY,
             turn: crate::TurnState::new(config.turn_order()),
             status: GameStatus::InProgress,
@@ -211,19 +212,44 @@ impl Default for BlocusEngine {
 /// bits, color masks overlap, or in-progress turn state has no active
 /// controller.
 pub fn validate_game_state(state: &GameState) -> Result<(), DomainError> {
+    if state.player_slots.mode() != state.mode {
+        return Err(EngineError::CorruptedState.into());
+    }
+
+    if state.mode == crate::GameMode::Duo && state.scoring != ScoringMode::Advanced {
+        return Err(EngineError::CorruptedState.into());
+    }
+
     validate_board_invariants(state)?;
     validate_turn_invariants(state)?;
+
+    if state.mode == GameMode::Duo {
+        validate_duo_state_consistency(state)?;
+    }
 
     Ok(())
 }
 
 fn validate_board_invariants(state: &GameState) -> Result<(), DomainError> {
     let mut occupied = BoardMask::EMPTY;
+    let ruleset = state.mode.ruleset();
 
     for color in PlayerColor::ALL {
         let color_mask = state.board.occupied(color);
+        let is_active = state.mode.is_active_color(color);
 
         if !color_mask.is_playable_subset() {
+            return Err(EngineError::CorruptedState.into());
+        }
+
+        if is_active {
+            if !color_mask.is_subset_of(ruleset.geometry().playable_mask()) {
+                return Err(EngineError::CorruptedState.into());
+            }
+        } else if !color_mask.is_empty()
+            || state.inventories[color.index()].used_mask() != 0
+            || state.last_piece_by_color.get(color).is_some()
+        {
             return Err(EngineError::CorruptedState.into());
         }
 
@@ -238,6 +264,22 @@ fn validate_board_invariants(state: &GameState) -> Result<(), DomainError> {
 }
 
 fn validate_turn_invariants(state: &GameState) -> Result<(), DomainError> {
+    if state
+        .turn_order
+        .validate_for_policy(state.mode.turn_order_policy())
+        .is_err()
+    {
+        return Err(EngineError::CorruptedState.into());
+    }
+
+    if !state.mode.is_active_color(state.turn.current_color()) {
+        return Err(EngineError::CorruptedState.into());
+    }
+
+    if state.turn.passed_mask() & !state.mode.active_color_bits() != 0 {
+        return Err(EngineError::CorruptedState.into());
+    }
+
     if state.status == GameStatus::InProgress {
         if state.turn.is_passed(state.turn.current_color()) {
             return Err(EngineError::CorruptedState.into());
@@ -249,6 +291,74 @@ fn validate_turn_invariants(state: &GameState) -> Result<(), DomainError> {
     }
 
     Ok(())
+}
+
+fn validate_duo_state_consistency(state: &GameState) -> Result<(), DomainError> {
+    let repository = standard_repository();
+    let starts = duo_starting_points_mask();
+    let mut occupied_starts = BoardMask::EMPTY;
+
+    for color in GameMode::Duo.active_colors().iter().copied() {
+        let inventory = state.inventories[color.index()];
+        let color_mask = state.board.occupied(color);
+        let occupied_square_count = color_mask.count();
+        let used_square_count = used_inventory_square_count(inventory, repository);
+        let last_piece = state.last_piece_by_color.get(color);
+
+        if occupied_square_count != used_square_count {
+            return Err(EngineError::CorruptedState.into());
+        }
+
+        if inventory.used_count() == 0 {
+            if last_piece.is_some() {
+                return Err(EngineError::CorruptedState.into());
+            }
+
+            continue;
+        }
+
+        let Some(last_piece) = last_piece else {
+            return Err(EngineError::CorruptedState.into());
+        };
+
+        if !inventory.is_used(last_piece) {
+            return Err(EngineError::CorruptedState.into());
+        }
+
+        let color_starts = color_mask.intersection(starts);
+        if color_starts.count() != 1 || occupied_starts.intersects(color_starts) {
+            return Err(EngineError::CorruptedState.into());
+        }
+
+        occupied_starts = occupied_starts.union(color_starts);
+    }
+
+    Ok(())
+}
+
+fn used_inventory_square_count(inventory: PieceInventory, repository: &PieceRepository) -> u32 {
+    let mut total = 0u32;
+
+    for raw_piece_id in 0..PIECE_COUNT {
+        let piece_id = PieceId::try_new(raw_piece_id)
+            .unwrap_or_else(|_| unreachable!("piece id in 0..PIECE_COUNT is valid"));
+
+        if inventory.is_used(piece_id) {
+            total += u32::from(repository.piece(piece_id).square_count());
+        }
+    }
+
+    total
+}
+
+fn duo_starting_points_mask() -> BoardMask {
+    let crate::OpeningPolicy::DuoStartingPoints { first, second } =
+        GameMode::Duo.ruleset().opening_policy()
+    else {
+        unreachable!("Duo ruleset always uses Duo starting points");
+    };
+
+    BoardMask::from_index(first).union(BoardMask::from_index(second))
 }
 
 fn apply_place_command(
@@ -438,7 +548,7 @@ fn any_unpassed_color_has_valid_move(
     state: &GameState,
     repository: &'static PieceRepository,
 ) -> bool {
-    for color in PlayerColor::ALL {
+    for color in state.mode.active_colors().iter().copied() {
         if state.turn.is_passed(color) {
             continue;
         }

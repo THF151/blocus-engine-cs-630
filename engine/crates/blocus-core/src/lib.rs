@@ -27,8 +27,14 @@ pub use board::{
     BOARD_BITS, BOARD_LANES, BOARD_SIZE, BoardIndex, BoardMask, BoardState, BoardSymmetry,
     PLAYABLE_CELLS, PLAYABLE_MASK, ROW_PADDING_BITS, ROW_STRIDE,
 };
-pub use color::{PLAYER_COLOR_COUNT, PlayerColor, TurnOrder, TurnOrderPolicy};
-pub use config::{GameConfig, GameMode, PlayerSlots, SharedColorTurn, TurnState};
+pub use color::{
+    CLASSIC_COLOR_COUNT, DUO_COLOR_COUNT, MAX_PLAYER_COLOR_COUNT, PLAYER_COLOR_COUNT, PlayerColor,
+    TurnOrder, TurnOrderPolicy,
+};
+pub use config::{
+    BoardGeometry, DUO_BOARD_SIZE, DUO_START_A, DUO_START_B, GameConfig, GameMode, OpeningPolicy,
+    PlayerSlots, Ruleset, SharedColorTurn, TurnState,
+};
 pub use engine::{BlocusEngine, engine_health, validate_game_state};
 pub use error::{DomainError, EngineError, InputError, RuleViolation};
 pub use hash::{

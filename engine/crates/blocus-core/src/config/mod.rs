@@ -1,9 +1,18 @@
 //! Game configuration, player/color assignment, and turn state.
 
 use crate::{
-    GameId, InputError, PLAYER_COLOR_COUNT, PlayerColor, PlayerId, ScoringMode, TurnOrder,
-    TurnOrderPolicy,
+    BOARD_SIZE, BoardIndex, BoardMask, GameId, InputError, MAX_PLAYER_COLOR_COUNT, PlayerColor,
+    PlayerId, ScoringMode, TurnOrder, TurnOrderPolicy,
 };
+
+/// Blokus Duo visible board size.
+pub const DUO_BOARD_SIZE: u8 = 14;
+
+/// First zero-based Duo starting point.
+pub const DUO_START_A: (u8, u8) = (4, 4);
+
+/// Second zero-based Duo starting point.
+pub const DUO_START_B: (u8, u8) = (9, 9);
 
 /// Supported Blokus game modes.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -15,6 +24,8 @@ pub enum GameMode {
     ThreePlayer,
     /// Four players: each player controls exactly one color.
     FourPlayer,
+    /// Blokus Duo: two players, black and white, on a 14×14 board.
+    Duo,
 }
 
 impl GameMode {
@@ -24,6 +35,7 @@ impl GameMode {
         match self {
             Self::TwoPlayer | Self::ThreePlayer => TurnOrderPolicy::OfficialFixed,
             Self::FourPlayer => TurnOrderPolicy::ClockwiseRotation,
+            Self::Duo => TurnOrderPolicy::DuoAlternating,
         }
     }
 
@@ -31,10 +43,170 @@ impl GameMode {
     #[must_use]
     pub const fn player_count(self) -> usize {
         match self {
-            Self::TwoPlayer => 2,
+            Self::TwoPlayer | Self::Duo => 2,
             Self::ThreePlayer => 3,
             Self::FourPlayer => 4,
         }
+    }
+
+    /// Returns the visible board size for this mode.
+    #[must_use]
+    pub const fn board_size(self) -> u8 {
+        match self {
+            Self::TwoPlayer | Self::ThreePlayer | Self::FourPlayer => BOARD_SIZE,
+            Self::Duo => DUO_BOARD_SIZE,
+        }
+    }
+
+    /// Returns the active colors for this mode in stable storage order.
+    #[must_use]
+    pub const fn active_colors(self) -> &'static [PlayerColor] {
+        match self {
+            Self::TwoPlayer | Self::ThreePlayer | Self::FourPlayer => &PlayerColor::CLASSIC,
+            Self::Duo => &PlayerColor::DUO,
+        }
+    }
+
+    /// Returns true if `color` participates in this mode.
+    #[must_use]
+    pub fn is_active_color(self, color: PlayerColor) -> bool {
+        self.active_colors().contains(&color)
+    }
+
+    /// Returns the active-color bit mask for this mode.
+    #[must_use]
+    pub const fn active_color_bits(self) -> u8 {
+        match self {
+            Self::TwoPlayer | Self::ThreePlayer | Self::FourPlayer => {
+                PlayerColor::Blue.bit()
+                    | PlayerColor::Yellow.bit()
+                    | PlayerColor::Red.bit()
+                    | PlayerColor::Green.bit()
+            }
+            Self::Duo => PlayerColor::Black.bit() | PlayerColor::White.bit(),
+        }
+    }
+
+    /// Returns the derived ruleset for this mode.
+    #[must_use]
+    pub const fn ruleset(self) -> Ruleset {
+        Ruleset::for_mode(self)
+    }
+}
+
+/// Logical board geometry for a mode.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+pub struct BoardGeometry {
+    size: u8,
+    playable_mask: BoardMask,
+}
+
+impl BoardGeometry {
+    /// Creates a square geometry backed by the fixed physical board.
+    #[must_use]
+    pub const fn square(size: u8) -> Self {
+        Self {
+            size,
+            playable_mask: BoardMask::square_playable_mask(size),
+        }
+    }
+
+    /// Classic 20×20 geometry.
+    #[must_use]
+    pub const fn classic() -> Self {
+        Self::square(BOARD_SIZE)
+    }
+
+    /// Duo 14×14 geometry.
+    #[must_use]
+    pub const fn duo() -> Self {
+        Self::square(DUO_BOARD_SIZE)
+    }
+
+    /// Returns the visible board size.
+    #[must_use]
+    pub const fn size(self) -> u8 {
+        self.size
+    }
+
+    /// Returns the playable-cell mask for this geometry.
+    #[must_use]
+    pub const fn playable_mask(self) -> BoardMask {
+        self.playable_mask
+    }
+}
+
+/// Opening placement policy.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+pub enum OpeningPolicy {
+    /// Classic fixed-corner starts.
+    ClassicCorners,
+    /// Duo's two shared starting points.
+    DuoStartingPoints {
+        /// First starting point.
+        first: BoardIndex,
+        /// Second starting point.
+        second: BoardIndex,
+    },
+}
+
+/// Compact derived ruleset for a mode.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+pub struct Ruleset {
+    mode: GameMode,
+    geometry: BoardGeometry,
+    opening_policy: OpeningPolicy,
+}
+
+impl Ruleset {
+    /// Returns the ruleset for a game mode.
+    ///
+    /// # Panics
+    ///
+    /// Panics only if the compile-time Duo starting coordinates are outside
+    /// the fixed physical board, which would indicate a broken engine
+    /// constant.
+    #[must_use]
+    pub const fn for_mode(mode: GameMode) -> Self {
+        match mode {
+            GameMode::TwoPlayer | GameMode::ThreePlayer | GameMode::FourPlayer => Self {
+                mode,
+                geometry: BoardGeometry::classic(),
+                opening_policy: OpeningPolicy::ClassicCorners,
+            },
+            GameMode::Duo => Self {
+                mode,
+                geometry: BoardGeometry::duo(),
+                opening_policy: OpeningPolicy::DuoStartingPoints {
+                    first: match BoardIndex::from_row_col(DUO_START_A.0, DUO_START_A.1) {
+                        Ok(index) => index,
+                        Err(_) => panic!("configured Duo start A must be on the physical board"),
+                    },
+                    second: match BoardIndex::from_row_col(DUO_START_B.0, DUO_START_B.1) {
+                        Ok(index) => index,
+                        Err(_) => panic!("configured Duo start B must be on the physical board"),
+                    },
+                },
+            },
+        }
+    }
+
+    /// Returns the mode.
+    #[must_use]
+    pub const fn mode(self) -> GameMode {
+        self.mode
+    }
+
+    /// Returns the logical board geometry.
+    #[must_use]
+    pub const fn geometry(self) -> BoardGeometry {
+        self.geometry
+    }
+
+    /// Returns the opening policy.
+    #[must_use]
+    pub const fn opening_policy(self) -> OpeningPolicy {
+        self.opening_policy
     }
 }
 
@@ -89,7 +261,7 @@ impl SharedColorTurn {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub struct PlayerSlots {
     mode: GameMode,
-    controllers: [Option<PlayerId>; PLAYER_COLOR_COUNT],
+    controllers: [Option<PlayerId>; MAX_PLAYER_COLOR_COUNT],
     shared_color_turn: Option<SharedColorTurn>,
 }
 
@@ -113,12 +285,36 @@ impl PlayerSlots {
 
         Ok(Self {
             mode: GameMode::TwoPlayer,
-            controllers: [
-                Some(blue_red_player),
-                Some(yellow_green_player),
-                Some(blue_red_player),
-                Some(yellow_green_player),
-            ],
+            controllers: {
+                let mut controllers = [None; MAX_PLAYER_COLOR_COUNT];
+                controllers[PlayerColor::Blue.index()] = Some(blue_red_player);
+                controllers[PlayerColor::Yellow.index()] = Some(yellow_green_player);
+                controllers[PlayerColor::Red.index()] = Some(blue_red_player);
+                controllers[PlayerColor::Green.index()] = Some(yellow_green_player);
+                controllers
+            },
+            shared_color_turn: None,
+        })
+    }
+
+    /// Creates a Blokus Duo assignment.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`InputError::InvalidGameConfig`] if both colors use the same
+    /// player.
+    pub fn duo(black_player: PlayerId, white_player: PlayerId) -> Result<Self, InputError> {
+        if black_player == white_player {
+            return Err(InputError::InvalidGameConfig);
+        }
+
+        let mut controllers = [None; MAX_PLAYER_COLOR_COUNT];
+        controllers[PlayerColor::Black.index()] = Some(black_player);
+        controllers[PlayerColor::White.index()] = Some(white_player);
+
+        Ok(Self {
+            mode: GameMode::Duo,
+            controllers,
             shared_color_turn: None,
         })
     }
@@ -134,9 +330,13 @@ impl PlayerSlots {
         owned_colors: [(PlayerColor, PlayerId); 3],
         shared_color_turn: SharedColorTurn,
     ) -> Result<Self, InputError> {
-        let mut controllers = [None; PLAYER_COLOR_COUNT];
+        let mut controllers = [None; MAX_PLAYER_COLOR_COUNT];
 
         for (color, player_id) in owned_colors {
+            if !color.is_classic() || !shared_color_turn.color().is_classic() {
+                return Err(InputError::InvalidGameConfig);
+            }
+
             let index = color.index();
 
             if controllers[index].is_some() || color == shared_color_turn.color() {
@@ -174,11 +374,15 @@ impl PlayerSlots {
     /// Returns [`InputError::InvalidGameConfig`] if colors or players are
     /// duplicated.
     pub fn four_player(
-        assignments: [(PlayerColor, PlayerId); PLAYER_COLOR_COUNT],
+        assignments: [(PlayerColor, PlayerId); crate::CLASSIC_COLOR_COUNT],
     ) -> Result<Self, InputError> {
-        let mut controllers = [None; PLAYER_COLOR_COUNT];
+        let mut controllers = [None; MAX_PLAYER_COLOR_COUNT];
 
         for (color, player_id) in assignments {
+            if !color.is_classic() {
+                return Err(InputError::InvalidGameConfig);
+            }
+
             let index = color.index();
 
             if controllers[index].is_some() {
@@ -188,7 +392,11 @@ impl PlayerSlots {
             controllers[index] = Some(player_id);
         }
 
-        if has_duplicate_assigned_players(controllers) || controllers.contains(&None) {
+        if has_duplicate_assigned_players(controllers)
+            || PlayerColor::CLASSIC
+                .into_iter()
+                .any(|color| controllers[color.index()].is_none())
+        {
             return Err(InputError::InvalidGameConfig);
         }
 
@@ -207,7 +415,7 @@ impl PlayerSlots {
 
     /// Returns all permanent color controllers.
     #[must_use]
-    pub const fn controllers(self) -> [Option<PlayerId>; PLAYER_COLOR_COUNT] {
+    pub const fn controllers(self) -> [Option<PlayerId>; MAX_PLAYER_COLOR_COUNT] {
         self.controllers
     }
 
@@ -289,7 +497,7 @@ impl TurnState {
     ) -> Self {
         Self {
             current_color,
-            passed_mask: passed_mask & all_color_bits(),
+            passed_mask: passed_mask & all_storage_color_bits(),
             shared_color_turn_index,
         }
     }
@@ -333,7 +541,13 @@ impl TurnState {
     /// Returns true if every color has passed.
     #[must_use]
     pub const fn all_colors_passed(self) -> bool {
-        self.passed_mask == all_color_bits()
+        self.passed_mask & classic_color_bits() == classic_color_bits()
+    }
+
+    /// Returns true if every active color for `mode` has passed.
+    #[must_use]
+    pub const fn all_active_colors_passed(self, mode: GameMode) -> bool {
+        self.passed_mask & mode.active_color_bits() == mode.active_color_bits()
     }
 
     /// Returns the number of colors that have passed.
@@ -379,14 +593,14 @@ impl TurnState {
             self.shared_color_turn_index = self.shared_color_turn_index.saturating_add(1);
         }
 
-        if self.all_colors_passed() {
+        if self.all_active_colors_passed(player_slots.mode()) {
             return None;
         }
 
         let mut next_color = turn_order.next_after(self.current_color);
         let mut checked = 0usize;
 
-        while checked < PLAYER_COLOR_COUNT {
+        while checked < turn_order.len() {
             if !self.is_passed(next_color) {
                 self.current_color = next_color;
                 return Some(*self);
@@ -425,6 +639,10 @@ impl GameConfig {
         player_slots: PlayerSlots,
     ) -> Result<Self, InputError> {
         if player_slots.mode() != mode {
+            return Err(InputError::InvalidGameConfig);
+        }
+
+        if mode == GameMode::Duo && scoring != ScoringMode::Advanced {
             return Err(InputError::InvalidGameConfig);
         }
 
@@ -468,28 +686,48 @@ impl GameConfig {
     pub const fn player_slots(self) -> PlayerSlots {
         self.player_slots
     }
-}
 
-const fn color_bit(color: PlayerColor) -> u8 {
-    match color {
-        PlayerColor::Blue => 1,
-        PlayerColor::Yellow => 1 << 1,
-        PlayerColor::Red => 1 << 2,
-        PlayerColor::Green => 1 << 3,
+    /// Creates a Blokus Duo configuration.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`InputError::InvalidGameConfig`] if player assignment or first
+    /// color is invalid.
+    pub fn duo(
+        game_id: GameId,
+        black_player: PlayerId,
+        white_player: PlayerId,
+        first_color: PlayerColor,
+    ) -> Result<Self, InputError> {
+        Self::try_new(
+            game_id,
+            GameMode::Duo,
+            ScoringMode::Advanced,
+            TurnOrder::duo(first_color)?,
+            PlayerSlots::duo(black_player, white_player)?,
+        )
     }
 }
 
-const fn all_color_bits() -> u8 {
+const fn color_bit(color: PlayerColor) -> u8 {
+    color.bit()
+}
+
+const fn classic_color_bits() -> u8 {
     color_bit(PlayerColor::Blue)
         | color_bit(PlayerColor::Yellow)
         | color_bit(PlayerColor::Red)
         | color_bit(PlayerColor::Green)
 }
 
-fn has_duplicate_assigned_players(controllers: [Option<PlayerId>; PLAYER_COLOR_COUNT]) -> bool {
+const fn all_storage_color_bits() -> u8 {
+    classic_color_bits() | color_bit(PlayerColor::Black) | color_bit(PlayerColor::White)
+}
+
+fn has_duplicate_assigned_players(controllers: [Option<PlayerId>; MAX_PLAYER_COLOR_COUNT]) -> bool {
     let mut outer = 0;
 
-    while outer < PLAYER_COLOR_COUNT {
+    while outer < MAX_PLAYER_COLOR_COUNT {
         let Some(player) = controllers[outer] else {
             outer += 1;
             continue;
@@ -497,7 +735,7 @@ fn has_duplicate_assigned_players(controllers: [Option<PlayerId>; PLAYER_COLOR_C
 
         let mut inner = outer + 1;
 
-        while inner < PLAYER_COLOR_COUNT {
+        while inner < MAX_PLAYER_COLOR_COUNT {
             if controllers[inner] == Some(player) {
                 return true;
             }
