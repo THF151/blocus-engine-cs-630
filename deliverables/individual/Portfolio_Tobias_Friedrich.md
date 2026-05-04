@@ -28,8 +28,8 @@ I setup the GitHub CI pipeline. The pipeline runs checks for the Flutter fronten
 **Evidence Links:**
 - **CI Pipeline:** [`/.github/workflows/ci.yml`](../../.github/workflows/ci.yml)
 - **Engine Makefile:** [`engine/Makefile`](../../engine/Makefile)
-- **FastAPI Makefile:** [`engine/Makefile`](../../backend/Makefile)
-- **Flutter Makefile:** [`engine/Makefile`](../../frontend/Makefile)
+- **FastAPI Makefile:** [`backend/Makefile`](../../backend/Makefile)
+- **Flutter Makefile:** [`frontend/Makefile`](../../frontend/Makefile)
 
 **Key Contributions:**
 - Added separate CI jobs for frontend, backend, and engine.
