@@ -183,27 +183,29 @@ In a next sprint, we can develop a similar package to provide dart / ... binding
 
 > **Note:** Document at least 3 applications of guidelines from other teams' guideline packages. For each, describe the guideline, how you applied it, and the outcome.
 
-### Application 1: `[Guideline Name]` from `[Topic]` Team
+### Application 1: Detailed Personas (G2) + Proactive Ambiguity Clarification (G3) from Requirements Team
 
 **Guideline Description:**  
-Briefly describe the guideline you applied.
+A combined application of two guidelines from the Requirements team. G2 says to give the LLM a rich, structured persona (e.g. as JSON) so the elicitation reflects the concerns that persona would care about. G3 says the LLM should flag unclear statements *before* generating requirements, ask short clarification questions, and then embed the answers back into the requirement text. I also kept **G1 (Human-in-the-Loop)** active in the background: after each pass, I reviewed the output and gave short feedback to steer the next iteration.
 
 **Context:**  
-What task or feature were you working on when you applied this guideline?
+The first elicitation pass for the Rust `blocus` engine. The engine had to cover Classic Blokus, and later — through a change request — Blokus Duo. It also had to expose a clean FFI surface usable from Python (`blocus-python`). The output target was a set of user stories using MUST / SHALL / SHOULD modal verbs, with acceptance criteria, so that we could turn them directly into engine work items and plan our implementation.
 
-**Application Process:**  
-1. `[Step 1]`
-2. `[Step 2]`
-3. `[Step 3]`
+**Application Process:**
+1. Defined a persona JSON for a senior CS professor focused on maintainable code and optimization. I pinned it as the first turn so the LLM prioritized clean domain modeling, validation, and performance-aware data structures instead of generic "good software" advice.
+2. Provided the official Blokus Classic rules as the main input, plus the constraint that the system must expose a Python-usable FFI API alongside with the team projects relevant slides. Asked the LLM to produce user stories in MUST / SHALL / SHOULD form.
+3. Applied G3: told the LLM that, before writing any requirement, it had to flag places where the rules text was unclear (for example: scoring bonuses, behaviour on a forced pass, tie-breaking) and ask short clarification questions. Once a question was answered, the answer had to be embedded into the matching requirement.
+4. After the first pass, applied G1: I reviewed the draft, noticed that the stories were well-formed but missed acceptance criteria and dependency links, and gave short human feedback asking for an explicit output schema (acceptance criteria, inter-story dependencies, language target — Rust core + PyO3 binding). The next pass produced directly usable output.
+5. Issued a change request to extend the same elicitation to Blokus Duo (14×14 board, two colors, fixed start points), reusing the persona and the clarification protocol so the Duo stories sat in parallel with the Classic ones.
 
-**Outcome:**  
-- **What worked:** `[Description]`
-- **What didn't work:** `[Description]`
-- **Evidence:** `[Link to prompt, code, tests, or documentation]`
+**Outcome:**
+- **What worked:** The persona kept the LLM focused on the right concerns — state representation, placement invariants, FFI shape — instead of UI-flavored stories. G3 caught real ambiguities in the rules text (what happens on a tie, starting corner coordinates in duo rule text not clearly mentioned, ...) and forced explicit Q&A turns; The Duo change request reused the same persona context cleanly and produced parallel stories without restarting from scratch.
+- **What didn't work (initially):** The first run produced clean stories but without acceptance criteria or dependency links, so they weren't directly actionable. This wasn't a problem with G2 or G3 — it was a missing output schema in my prompt. A short human review (G1) and one round of feedback fixed it: the persona and clarification core stayed the same, only the format spec was added.
+- **Evidence:**
+  - Requirements document produced by this elicitation: [`deliverables/individual/evidence/requirements-engine.md`](../../deliverables/individual/evidence/requirements-engine.md)
 
 **Reflection:**  
-What did you learn from applying this guideline? Would you use it again in a similar context?
-
+The combination is stronger than any of the three guidelines alone. Of course assigning a role is like the first rule in Prompt Engeneering 101, yet it seems to work out. The takeaway on the schema is worth keeping: neither G2 nor G3 prescribes an output format, and without one the LLM will fall back to loose prose. I would apply this combination again for any rule-driven domain (board games, regulatory specs, protocol implementations) where the source text has known soft spots. For more open-ended or creative domains I would weaken the persona and probably drop G3, since "ambiguity" there is often the point.
 ---
 
 ### Application 2: `[Guideline Name]` from `[Topic]` Team
