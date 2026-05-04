@@ -15,40 +15,167 @@
 
 ## 1. Owned Package Contributions
 
-### Package Name: `[Package Name]`
+### Package Name: Pipeline Setup and CI Documentation
 
 **Description:**  
-Briefly describe the package you owned and what it does.
+I setup the GitHub CI pipeline. The pipeline runs checks for the Flutter frontend, FastAPI backend, Rust engine, and Python FFI bindings. It is used on pull requests, pushes to `main`, and manual runs.
 
 **Responsibilities:**  
-- `[Responsibility 1]`
-- `[Responsibility 2]`
-- `[Responsibility 3]`
+- Set up the GitHub Actions workflow for frontend, backend, and engine validation.
+- Add formatting, linting, type checking, test, and coverage steps.
+- Make sure the Rust Python binding is built during backend and engine checks.
 
 **Evidence Links:**
-- **Commits:** `[Link to your commits]`
-- **Tests:** `[Link to tests you authored]`
-- **Documentation:** `[Link to documentation you wrote]`
+- **CI Pipeline:** [`/.github/workflows/ci.yml`](../../.github/workflows/ci.yml)
+- **Engine Makefile:** [`engine/Makefile`](../../engine/Makefile)
+- **FastAPI Makefile:** [`engine/Makefile`](../../backend/Makefile)
+- **Flutter Makefile:** [`engine/Makefile`](../../frontend/Makefile)
 
 **Key Contributions:**
-- `[Contribution 1]`
-- `[Contribution 2]`
-- `[Contribution 3]`
+- Added separate CI jobs for frontend, backend, and engine.
+- Added format, lint, typecheck, test, and coverage checks.
 
 ---
 
-### Package Name: `[Package Name]` (Optional)
+### Package Name: `blocus-core`
 
 **Description:**  
-Briefly describe the package you owned and what it does.
+I owned the Rust core engine package. This package contains the main game logic for Classic Blokus and Blokus Duo. It handles board state, player/color setup, piece definitions, move validation, move generation, turn tracking, passing, scoring, hashing, and state validation. It is designed as a pure Rust domain layer without direct dependencies on FastAPI, Redis, Flutter, or Python runtime logic.
+
+**Responsibilities:**  
+- Implement the core domain model for Blokus.
+- Support Classic and Duo game modes.
+- Enforce placement rules and opening rules.
+- Generate legal moves.
+- Track turns, passed colors, finished games, and score state.
+- Keep the state compact and deterministic.
+- Provide stable Rust APIs for the Python binding layer.
+- Add tests and invariants for correctness and coverage.
 
 **Evidence Links:**
-- **Commits:** `[Link to your commits]`
-- **Tests:** `[Link to tests you authored]`
-- **Documentation:** `[Link to documentation you wrote]`
+- **Core Engine Crate:** [`engine/crates/blocus-core/`](../../engine/crates/blocus-core/)
+- **Engine Facade:** [`engine/crates/blocus-core/src/engine/mod.rs`](../../engine/crates/blocus-core/src/engine/mod.rs)
+- **Board Logic:** [`engine/crates/blocus-core/src/board/`](../../engine/crates/blocus-core/src/board/)
+- **Game Config:** [`engine/crates/blocus-core/src/config/mod.rs`](../../engine/crates/blocus-core/src/config/mod.rs)
+- **Move Generation:** [`engine/crates/blocus-core/src/movegen/mod.rs`](../../engine/crates/blocus-core/src/movegen/mod.rs)
+- **Placement Rules:** [`engine/crates/blocus-core/src/rules/placement.rs`](../../engine/crates/blocus-core/src/rules/placement.rs)
+- **Scoring:** [`engine/crates/blocus-core/src/scoring/mod.rs`](../../engine/crates/blocus-core/src/scoring/mod.rs)
+- **Hashing:** [`engine/crates/blocus-core/src/hash/mod.rs`](../../engine/crates/blocus-core/src/hash/mod.rs)
+- **Transposition Table:** [`engine/crates/blocus-core/src/transposition.rs`](../../engine/crates/blocus-core/src/transposition.rs)
+- **Tests** [`engine/crates/blocus-core/tests/`](../../engine/crates/blocus-core/tests/)
 
+**Key Contributions:**
+- Implemented the core `BlocusEngine` facade with methods for:
+  - game initialization
+  - command application
+  - legal move generation
+  - move existence checks
+  - final scoring
+- Added mode-aware configuration through:
+  - `GameMode`
+  - `GameConfig`
+  - `PlayerSlots`
+  - `TurnOrder`
+  - `Ruleset`
+  - `BoardGeometry`
+- Added support for Classic and Duo:
+  - Classic: 20x20 board, blue/yellow/red/green colors, corner starts
+  - Duo: 14x14 board, black/white colors, start points at `(4, 4)` and `(9, 9)`
+- Implemented placement validation:
+  - rejects overlap
+  - rejects out-of-bounds placements
+  - enforces same-color corner contact
+  - rejects same-color edge contact
+  - checks first move start positions
+- Implemented a legal move iterator using board masks.
+- Added compact board representation with padded-row bit indexing.
+- Added inventory tracking for all 21 Blokus pieces.
+- Added advanced scoring with completion and monomino-last bonuses.
+- Added deterministic position hashing for state verification and future AI/search usage.
+- Added a transposition table primitive for later search-based AI work.
+- Added structural state validation to reject corrupted board masks, invalid turn state, inactive colors, and invalid Duo state.
 
-> **Note:** Adjust to your needs (number of work packages your worked on etc.)
+---
+
+### Package Name: `blocus-python`
+
+**Description:**  
+Furthermore, I owned the Python binding package for the Rust core engine. This package exposes the Rust engine to Python using PyO3. It gives the backend a Python-friendly API while still executing game logic in Rust. It also handles conversion between Python objects and Rust domain types, structured errors, JSON state round trips, and public API tests.
+In a next sprint, we can develop a similar package to provide dart / ... bindings for different languages.
+
+**Responsibilities:**  
+- Expose the Rust core engine to Python.
+- Convert Python input types into validated Rust domain types.
+- Provide Python classes for game config, commands, state, results, pieces, and enums.
+- Map Rust errors into structured Python exceptions.
+- Support JSON serialization and deserialization of game state. (As requested for this Team Project)
+- Add Python tests for the binding contract.
+- Keep the Python API stable enough for backend usage.
+- Provide pyi bindings for python linters
+
+**Evidence Links:**
+- **Python Binding Crate:** [`engine/crates/blocus-python/`](../../engine/crates/blocus-python/)
+- **PyO3 Module Entry:** [`engine/crates/blocus-python/src/lib.rs`](../../engine/crates/blocus-python/src/lib.rs)
+- **Engine Binding:** [`engine/crates/blocus-python/src/engine.rs`](../../engine/crates/blocus-python/src/engine.rs)
+- **Command Binding:** [`engine/crates/blocus-python/src/command.rs`](../../engine/crates/blocus-python/src/command.rs)
+- **Config Binding:** [`engine/crates/blocus-python/src/config.rs`](../../engine/crates/blocus-python/src/config.rs)
+- **State Binding:** [`engine/crates/blocus-python/src/state.rs`](../../engine/crates/blocus-python/src/state.rs)
+- **Result Binding:** [`engine/crates/blocus-python/src/result.rs`](../../engine/crates/blocus-python/src/result.rs)
+- **Piece Binding:** [`engine/crates/blocus-python/src/pieces.rs`](../../engine/crates/blocus-python/src/pieces.rs)
+- **Error Mapping:** [`engine/crates/blocus-python/src/errors.rs`](../../engine/crates/blocus-python/src/errors.rs)
+- **Python Tests:** [`engine/crates/blocus-python/python_tests/`](../../engine/crates/blocus-python/python_tests/)
+- **PYI Python Types** [`backend/src/blocus_engine.pyi`](../../backend/src/blocus_engine.pyi)
+
+**Key Contributions:**
+- Added the Python `BlocusEngine` wrapper with methods for:
+  - `initialize_game`
+  - `apply`
+  - `get_valid_moves`
+  - `get_valid_moves_for_piece`
+  - `has_any_valid_move`
+  - `has_any_valid_move_for_piece`
+  - `score_game`
+- Added Python command objects:
+  - `PlaceCommand`
+  - `PassCommand`
+- Added Python config objects:
+  - `GameConfig`
+  - `GameMode`
+  - `PlayerSlots`
+  - `SharedColorTurn`
+- Added Python state APIs:
+  - `board_matrix`
+  - `cell`
+  - `occupied_cells`
+  - `board_counts`
+  - `used_piece_ids`
+  - `available_piece_ids`
+  - `inventory_summary`
+  - `to_json`
+  - `from_json`
+- Added Python wrappers for pieces and orientations.
+- Added stable enum-like classes for:
+  - `PlayerColor`
+  - `GameStatus`
+  - `ScoringMode`
+  - `GameMode`
+  - `DomainEventKind`
+  - `DomainResponseKind`
+- Added structured Python errors:
+  - `BlocusError`
+  - `InputError`
+  - `RuleViolationError`
+  - `EngineError`
+- Added JSON round-trip support with hash recomputation and state validation.
+- Added Duo-specific Python API support:
+  - `GameMode.DUO`
+  - `PlayerColor.BLACK`
+  - `PlayerColor.WHITE`
+  - `GameConfig.duo(...)`
+  - 14x14 board output
+  - Duo opening rules
+  - Duo JSON state round trips
+- Added Python tests covering commands, enums, config, state JSON, board/piece APIs, Duo mode, edge cases, errors, passing, and scoring.
 
 ---
 
