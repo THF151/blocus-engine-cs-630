@@ -9,7 +9,7 @@
 
 **Team Name:** `Design`  
 **Project:** Blokus Game Engine (Classic + Duo)  
-**Team Members:** `Aleksander Kasak, Stephan Herbert, Tobias Friedrich]`
+**Team Members:** Aleksander Kasak, Stephan Herbert, Tobias Friedrich
 
 ---
 
@@ -17,21 +17,26 @@
 
 ### Overview
 
-Briefly describe the scope of your project (incldue toolkit used such as programming language, build tools, editors etc.). What features did you implement? What was the scope of the Blokus Classic and Blokus Duo implementations?
+The project implements a full-stack Blokus Game Engine encompassing both Classic and Duo variants. The tech stack focuses on a **Rust** core engine for game logic and move validation, integrated via FFI into a **Python (FastAPI)** backend service. The backend architecture is cloud-native, orchestrating multiplayer connections via HTTP/WebSockets and utilizing **Redis** for robust state management. Players interact through a **Flutter** frontend that supports seamless multi-platform gameplay (iOS/Android/Web/Desktop).
 
 ### Architecture Diagram
 
-> **Note:** Insert a simple architecture diagram here (e.g., ASCII or image)
+```mermaid
+graph TD
+    F[Flutter Frontend] <-->|HTTP / WebSockets| B[FastAPI Backend Service]
+    B -->|FFI| R[Rust Core Engine]
+    B <-->|State Persistence| Redis[(Redis)]
+    A[AI Players] -->|Simulated Input| B
+    F -.->|FFI - Future Singleplayer| R
+```
 
 ### Key Components
 
-1. **Game Board:** `[Description]`
-2. **Move Validation:** `[Description]`
-3. **Game State Management:** `[Description]`
-4. **CLI Interface:** `[Description]`
-5. **Test Suite:** `[Description]`
-
-> **Note:** Use these as examples only. Define additional components relevant to your team's implementation (i.e., splitting of tasks depend on team size etc.).
+1. **Rust Core Engine:** Handles core rules, board dimensions, legal placement evaluations, turn tracking, and scoring calculations.
+2. **Backend Service Layer:** Manages request endpoints, WebSocket connections, concurrency, and interfaces directly with the Rust engine.
+3. **State Management:** Redis instance used specifically for horizontal scalability and managing active lobby/game states efficiently in the cloud.
+4. **AI Players:** Embedded simulation logics allowing automated agents to participate inside the backend loops.
+5. **Flutter Frontend:** Provides the interactive user interface, rendering lobbies, and facilitating real-time drag-and-drop gameplay syncing with the backend.
 
 ---
 
@@ -41,28 +46,23 @@ Briefly describe the scope of your project (incldue toolkit used such as program
 
 Describe which AI tools you used and where. Be specific about the tools/models and how they were integrated into your workflow.
 
-| Phase | AI Tool/Model | Usage | Validation Method |
-|-------|---------------|-------|-------------------|
-| `[e.g., Requirements]` | `[e.g., GPT-5.2]` | `[e.g., Generate requirements from user stories]` | `[e.g., Peer review, manual verification]` |
-| `[e.g., Code Generation]` | `[e.g., GitHub Copilot (Agent)]` | `[e.g., Generate board representation code]` | `[e.g., Unit tests, manual testing]` |
-| `[e.g., Testing]` | `[e.g., Claude 4.5 Sonnet]` | `[e.g., Generate test cases]` | `[e.g., Test execution, coverage analysis]` |
-| `[e.g., Debugging]` | `[e.g., DeepSeek Coder]` | `[e.g., Debug failing tests]` | `[e.g., Manual verification, regression tests]` |
-
-> **Note:** Use these as examples only
+| Phase                          | AI Tool/Model                                    | Usage                                                   | Validation Method                                   |
+|--------------------------------|--------------------------------------------------|---------------------------------------------------------|-----------------------------------------------------|
+| Requirements                   | GPT 5.5, GPT 5.4, Gemini 3.1 Pro                 | Requirements extraction and specification building      | Manual verification, LLM as a judge                 |
+| Design                         | Gemini 3.1 Pro, GPT 5.5                          | LLM ADR generation                                      | Manual review                                       |
+| Code Gen & Testing & Debugging | Codex, Claude Code, GitHub Copilot, GPT 5.5 Chat | FFI bindings, core logic, Flutter UI, and test suites   | Manual code execution, test suites, LLM code review |
+| Code Review                    | GPT 5.5                                          | Automated pull request PR feedback and structure checks | Manual verification                                 |
 
 
 ### AI Usage Policy
 
 Describe any AI usage policies, guidelines, or constraints your team followed during development. This may also include course-specific requirements, or internal team agreements.
 
-| Policy/Guideline | Description | Application |
-|------------------|-------------|-------------|
-| `[e.g., Disclosure Requirement]` | `[e.g., All AI-generated code must be clearly commented]` | `[e.g., Added `// AI-Generated: GPT-5.2` headers]` |
-| `[e.g., Citation Policy]` | `[e.g., AI contributions must be cited in README]` | `[e.g., Listed tools and outputs in `AI_USAGE.md`]` |
-| `[e.g., Human Oversight Rule]` | `[e.g., No fully autonomous code generation]` | `[e.g., All generated code reviewed before commit]` |
-| `[e.g., No Proprietary Data Use]` | `[e.g., Did not feed project code into public LLMs]` | `[e.g., Used local models or private instances]` |
-
-> **Note:** Use these as examples only. Adjust based on your team's actual practices.
+| Policy/Guideline        | Description                                                                                 | Application                                                                                                |
+|-------------------------|---------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------|
+| Privacy & Data Security | No proprietary data; do not feed personal bound information into models.                    | Prevented usage of live user data or sensitive material into prompts.                                      |
+| Latest Tool Usage       | Guarantee use of the latest LLM Models (Gemini 3.1 Pro, GPT 5.5, Opus 4.7).                 | Ensured our outputs leveraged state-of-the-art capability for better logic results.                        |
+| AI Generation Rule      | Do not code large parts yourself, optimize prompts to implement code in a shorter timespan. | Addressed the core course objective by evaluating LLMs' coding capabilities instead of manual keystroking. |
 
 
 ---
