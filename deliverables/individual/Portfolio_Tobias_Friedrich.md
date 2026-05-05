@@ -354,29 +354,29 @@ Describe the failure or suboptimal result.
 
 ### Tools and Models Used
 
-| Tool/Model | Usage | Validation Method |
-|------------|-------|-------------------|
-| `[e.g., GitHub Copilot]` | `[e.g., Code generation, suggestions]` | `[e.g., Unit tests, peer review]` |
-| `[e.g., GPT-4]` | `[e.g., Requirements, documentation]` | `[e.g., Manual verification]` |
-| `[e.g., Claude 3.5 Sonnet]` | `[e.g., Test generation]` | `[e.g., Test execution]` |
+| Tool/Model            | Usage                                                                                    | Validation Method                                              |
+|-----------------------|------------------------------------------------------------------------------------------|----------------------------------------------------------------|
+| `GPT 5.5 Chat`        | Code generation, planning, discussion, UML generation                                    | Automated testing pipeline, human review                       |
+| `Opus 4.7`            | Code reviews on PRs, serialized codebase to spot logical errors and optimization options | Human review                                                   |
+| `Codex / Claude Code` | Code generation (limited by tight usage limits)                                          | Automated testing pipeline, human review of tests and codebase |
 
 ### Evaluation Methods
 
 Describe how you evaluated AI-generated outputs (below are examples for your guidance):
 
-1. **Correctness Testing:** `[Description]`
-2. **Code Review:** `[Description]`
-3. **Unit Tests:** `[Description]`
-4. **Integration Tests:** `[Description]`
-5. **Performance Testing:** `[Description]` (if applicable)
+1. **Correctness Testing:** Automated testing pipeline checks against domain logic.
+2. **Code Review:** Human review of both the generated test suite and the actual codebase.
+3. **Unit Tests:** Automated test runs via `make check` on PRs and local validations.
+4. **Integration Tests:** Python FFI layer tested against Rust code continuously.
+5. **Performance Testing:** A simulation script was created to measure runtime and memory space performance between different versions.
 
 ### Time Investment
 
-Approximately how much time did you spend on:
-- AI prompting and refinement: `[X] hours`
-- Reviewing AI outputs: `[X] hours`
-- Testing and validation: `[X] hours`
-- Documentation: `[X] hours`
+Approximately how much time did you spend on: (I can only recommend to put this at the beginning of the document for the next classes)
+- AI prompting and refinement: `15 hours`
+- Reviewing AI outputs: `30 hours`
+- Testing and validation: `30 hours`
+- Documentation: `30 hours`
 
 ---
 
