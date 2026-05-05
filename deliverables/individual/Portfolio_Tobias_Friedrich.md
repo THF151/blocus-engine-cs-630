@@ -1,7 +1,6 @@
 # Portfolio_Tobias_Friedrich.md
 
 > **Individual Student Portfolio**  
-> *~4-5 page report documenting your contributions, guideline applications, and counterexamples.*
 
 ---
 
@@ -59,24 +58,11 @@ I owned the Rust core engine package. This package contains the main game logic 
   - legal move generation
   - move existence checks
   - final scoring
-- Added mode-aware configuration through:
-  - `GameMode`
-  - `GameConfig`
-  - `PlayerSlots`
-  - `TurnOrder`
-  - `Ruleset`
-  - `BoardGeometry`
+- Added mode-aware configuration
 - Added support for Classic and Duo:
   - Classic: 20x20 board, blue/yellow/red/green colors, corner starts
   - Duo: 14x14 board, black/white colors, start points at `(4, 4)` and `(9, 9)`
-- Implemented placement validation:
-  - rejects overlap
-  - rejects out-of-bounds placements
-  - enforces same-color corner contact
-  - rejects same-color edge contact
-  - checks first move start positions
-- Implemented a legal move iterator using board masks.
-- Added compact board representation with padded-row bit indexing.
+- Implemented placement validation
 - Added inventory tracking for all 21 Blokus pieces.
 - Added advanced scoring with completion and monomino-last bonuses.
 ---
@@ -96,7 +82,7 @@ In a next sprint, we can develop a similar package to provide dart / ... binding
 **Evidence Links:**
 - **Python Binding Crate:** [`engine/crates/blocus-python/`](../../engine/crates/blocus-python/)
 - **Python Tests:** [`engine/crates/blocus-python/python_tests/`](../../engine/crates/blocus-python/python_tests/)
-- **PYI Python Types** [`backend/src/blocus_engine.pyi`](../../backend/src/blocus_engine.pyi)
+- **Python Type Stubs (`.pyi`)** [`backend/src/blocus_engine.pyi`](../../backend/src/blocus_engine.pyi)
 
 **Key Contributions:**
 - Added the Python `BlocusEngine` wrapper with methods for (e.g.):
@@ -112,8 +98,6 @@ In a next sprint, we can develop a similar package to provide dart / ... binding
 ---
 
 ## 2. Guideline Applications
-
-> **Note:** Document at least 3 applications of guidelines from other teams' guideline packages. For each, describe the guideline, how you applied it, and the outcome.
 
 ### Application 1: `
 `Detailed Personas (G2)` + `Proactive Ambiguity Clarification` (G3) from Requirements Team
@@ -143,6 +127,9 @@ Of course assigning a role is like the first rule in Prompt Engeneering 101, yet
 ---
 
 ### Application 2: `UML Specification (Sequence Diagrams)` from `Design` Team
+
+**Admissibility Note:**
+I was part of the Design team, which authored this UML guideline. I included it because I applied the guideline before realizing that own-team guidelines might not count toward the “other teams” requirement. If this application is not admissible, it can be treated as supplementary evidence and skipped;
 
 **Guideline Description:**  
 Guideline 3 is the four-stage UML workflow: prepare inputs → core prompting principles → diagram-type-specific guidance → validation. For sequence diagrams specifically, the relevant elements are: explicit instructions on `loop`/`alt`/`opt` fragments (not letting the LLM scatter or over-nest them), manual verification of the initiating actor, inline `note right` traceability with REQ IDs at every major message or alternative block, and storing the result as text-based diagrams-as-code in version control rather than as static images.
@@ -222,8 +209,6 @@ This guideline is important when using LLMs for large parts of a codebase. The L
 
 ## 3. Counterexamples
 
-> **Note:** Document at least 3 reproducible counterexamples where guidelines failed or produced suboptimal results. For each, include the failure, diagnosis, and refinement.
-
 ---
 
 ### Counterexample 1: `Atomic Task Decomposition (G4)` from `Coding` Team
@@ -262,88 +247,9 @@ before writing the code, and include unit tests.
 ```
 
 **AI Output:**
-```rust
-pub fn is_legal_placement(
-    board: &Board,
-    piece: &Piece,
-    position: Position,
-    player: Player,
-) -> bool {
-    let mut absolute_cells = Vec::with_capacity(piece.cells.len());
 
-    for relative in &piece.cells {
-        let absolute = Position {
-            row: position.row + relative.row,
-            col: position.col + relative.col,
-        };
+[`deliverables/individual/evidence/counterexample-atomic-decomposition-output.md`](./evidence/counterexample-atomic-decomposition-output.md) 
 
-        // 1. Piece must fit entirely inside the board.
-        if !Board::in_bounds(absolute) {
-            return false;
-        }
-
-        // 2. Piece must not overlap any existing piece.
-        if board.get(absolute).is_some() {
-            return false;
-        }
-
-        absolute_cells.push(absolute);
-    }
-
-    let is_first_move = !board.has_player_piece(player);
-
-    if is_first_move {
-        let start_square = player.start_square();
-
-        // First move must cover the player's starting square.
-        return absolute_cells.contains(&start_square);
-    }
-
-    let edge_offsets = [
-        (-1, 0),
-        (1, 0),
-        (0, -1),
-        (0, 1),
-    ];
-
-    let corner_offsets = [
-        (-1, -1),
-        (-1, 1),
-        (1, -1),
-        (1, 1),
-    ];
-
-    let mut has_same_color_corner_contact = false;
-
-    for cell in &absolute_cells {
-        // 3. Cannot edge-touch a same-color piece.
-        for (dr, dc) in edge_offsets {
-            let neighbor = Position {
-                row: cell.row + dr,
-                col: cell.col + dc,
-            };
-
-            if Board::in_bounds(neighbor) && board.get(neighbor) == Some(player) {
-                return false;
-            }
-        }
-
-        // 4. Must corner-touch at least one same-color piece.
-        for (dr, dc) in corner_offsets {
-            let neighbor = Position {
-                row: cell.row + dr,
-                col: cell.col + dc,
-            };
-
-            if Board::in_bounds(neighbor) && board.get(neighbor) == Some(player) {
-                has_same_color_corner_contact = true;
-            }
-        }
-    }
-
-    has_same_color_corner_contact
-}
-```
 *Failure in this output:* (1) `Board`, `Piece`, `Position`, `Player` are all hallucinated — none of these signatures exist in `blocus-core`. This is not surprising without proper context engeneering. 
 
 ---
@@ -464,8 +370,6 @@ Note: Here you can see that its (funny) idea was to invent a new color. This cod
 
 ### Evaluation Methods
 
-Describe how you evaluated AI-generated outputs:
-
 1. **Correctness Testing:** Automated testing pipeline checks against domain logic.
 2. **Code Review:** Human review of both the generated test suite and the actual codebase.
 3. **Unit Tests:** Automated test runs via `make check` on PRs and local validations.
@@ -483,8 +387,6 @@ Approximately how much time did you spend on: (I would recommend to put this at 
 ---
 
 ## 5. Reflections
-
-> **Note:** Use this as your guidance
 
 ### What You Learned
 
@@ -507,16 +409,5 @@ If you could do this project again, what would you do differently?
 - First, I would reduce the feature scope to better match the intended 6 ECTS workload per person. The final engine became substantially larger than necessary for evaluating the guideline packages. 
 - I would evaluate smaller local models like qwen 3.6 more systematically. Most implementation and review work relied on strong commercial models and agentic coding tools, which produced good results but were limited by cost, availability, and usage caps.
 - I would propose a project with a stronger real-world use case. The Blokus engine worked well as a controlled software-engineering task, but it is unlikely to be used after the module. Since the course is about applying LLM guidelines to realistic software development, there would be strong value in allowing students to apply the guidelines to active research tools, private projects, startup prototypes, or case studies from other modules. A project with real users or a concrete business case would make the tradeoffs around requirements, maintainability, testing, and deployment more meaningful.
-
----
-
-## Instructions for Use
-
-1. **Replace all `[...]` placeholders** with your specific content
-2. **Document at least 3 guideline applications** with evidence
-3. **Document at least 3 counterexamples** with proper analysis
-4. **Be specific about AI tools used** and how outputs were validated
-5. **Keep it concise** (4-5 pages max)
-6. **Submit as `Portfolio_<StudentName>.md`** (replace `<StudentName>` with your actual name) in your project repository
 
 ---
