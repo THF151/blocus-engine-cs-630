@@ -263,6 +263,29 @@ I applied this guideline when extending the Rust `blocus-core` engine and the `b
 **Reflection:**  
 This guideline fits the Duo implementation better than a pure decomposition guideline because the decisive part was not only splitting the work, but repeatedly validating and repairing the generated code. Codex already incorporates much of this workflow: it plans, edits, observes failures, and revises. However, the guideline was still necessary because we had to define the verification contract: use the existing pipeline, keep the codebase green, generate friendly API tests first, target high coverage, and preserve Classic behavior. My main takeaway is that agentic coding is most useful when the repository already has a strong validation pipeline. Without that pipeline, the model could still produce plausible code, but there would be no reliable remediation signal.
 
+### Application 4: `Human in the Loop` from Testing Team
+
+**Guideline Description:**  
+Testing Guideline 5 says that AI-generated code and tests must not be accepted blindly. A human should review the output for correctness, logic, maintainability, and alignment with the project standards before it is added to the codebase.
+
+**Context:**  
+In this project, LLMs generated about 95% of the codebase. Very little code was written fully by hand, because the course was about evaluating what LLMs can do in software engineering. This included Rust engine code, Python bindings, tests, and documentation drafts.
+
+**Application Process:**
+1. For most implementation tasks, I asked an LLM to generate the first version of the code.
+2. After each generated code snippet or patch, I reviewed the result manually.
+3. I especially checked the generated tests, because wrong tests can make broken code look correct.
+4. I also used an independent LLM as a judge/reviewer. This second LLM reviewed the generated code for missing edge cases, wrong assumptions, redundant checks, and possible logic errors.
+5. Only after human review, LLM review, and automated validation through `make check`, unit tests, formatting, linting, and CI checks was the code accepted.
+
+**Outcome:**
+- **What worked:** This worked well overall. Most generated code was correct or close to correct, especially because the project had automated tests and CI checks. The LLMs were useful for quickly producing large parts of the engine, bindings, and test suite.
+- **What did not work:** Sometimes the LLM added functionality that was not requested, invented unnecessary behavior, or added redundant checks. These problems were usually found during human review, by the second LLM reviewer, or by the automated test pipeline. In a later discussion, they could be fixed eventually.
+- **Why the guideline mattered:** The guideline was necessary because LLM output often looked polished even when it contained small logic errors or unnecessary additions. Human-in-the-loop review made it possible to discuss, reject, or refine these outputs before they became part of the project.
+
+**Reflection:**  
+This guideline is important when using LLMs for large parts of a codebase. The LLM can generate code very quickly, but it should still be treated as a draft. Automated testing catches many problems, but not all of them. Human review and an independent LLM review helped catch hallucinated functionality, redundant logic, and weak tests.
+
 ---
 
 ## 3. Counterexamples
