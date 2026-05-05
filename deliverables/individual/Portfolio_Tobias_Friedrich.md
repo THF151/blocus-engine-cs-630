@@ -269,6 +269,130 @@ This guideline fits the Duo implementation better than a pure decomposition guid
 
 > **Note:** Document at least 3 reproducible counterexamples where guidelines failed or produced suboptimal results. For each, include the failure, diagnosis, and refinement.
 
+---
+
+### Counterexample 1: `Atomic Task Decomposition (G4)` from `Coding` Team
+
+**Failure Description:**
+Coding G4 recommends breaking complex requirements into atomic, testable units (functions/modules) and prompting for them individually with a small chain-of-reasoning. The guideline's example — "Instead of *Build a full data ingestion pipeline*, first prompt for *A function to parse the raw headers*" — implicitly assumes the function is self-contained. I applied this exact pattern in two settings: during the early prototyping of the engine, and later when asking for specific methods on `blocus-core` (placement legality, scoring helpers, FFI conversion). The expected outcome was a clean, focused function that I could drop into the existing module. What I actually got — repeatedly — was code that looked correct in isolation but did not fit the codebase: it reinvented utilities that already existed (e.g. bitmask intersection), hallucinated plausible-but-wrong type signatures for `Board`, `Piece`, and `Position`, ignored the `BlocusError` mapping convention used everywhere else in the crate. None of it passed human review and none of it was committed, but each round still cost time to read, diagnose, and discard.
+
+**Diagnosis:**
+- **Root Cause:** G4 prescribes the *granularity* of the prompt (one function, one module) but says nothing about what surrounding context must travel with each atomic prompt. Once a request is scoped to a single function, the LLM has no signal about the public interfaces, error conventions, or precomputed utilities of the surrounding module. It fills the gap with invented but plausible structures that fit the prompt locally and clash with the codebase globally.
+- **Why the Guideline Failed:** G4 is in unacknowledged tension with Coding G1 (Context-Aware Grounding via AGENTS.md). G1's premise is that >70% of real-world functions depend on project-specific entities and therefore need repository context; G4's prompt-shape pulls in the opposite direction by isolating one function at a time. The package treats the two as independent, but in practice applying G4 without an explicit context-carry mechanism produces exactly the hallucinated-dependency failures G1 is meant to prevent.
+- **Boundary Condition:** The failure is reproducible whenever (a) the surrounding module has non-obvious internal utilities (in our case for example the bitmask board representation, (b) the crate maintains a strict dependency boundary that isn't visible from the function signature alone, or (c) error handling follows a specific convention rather than a language default (`Result<(), BlocusError>` with structured variants. For straightforward standard-library tasks the guideline works; for codebase-shaped tasks it does not.
+
+**Refinement:**
+- **Updated Guideline:** Treat G4 as inseparable from G1. Every atomic prompt must carry, in addition to the function specification: (i) the AGENTS.md or equivalent project conventions, (ii) the public interface and relevant trait definitions of the surrounding module, and (iii) any utility helpers the function is expected to use. Concretely: do not prompt for a function in isolation. Prompt for a function plus a serialized slice of the repository it has to live inside.
+- **How It Was Tested (evaluated):** I built a serialization script that walks the repository and emits a single markdown bundle containing the public API of all modules, the relevant trait/type definitions. The bundle is sized to fit comfortably inside ChatGPT's ~100k-token context window. I then re-ran the same atomic prompt on `is_legal_placement` and several other targets, this time with the serialized bundle prepended. The same prompt that previously hallucinated several redundancies and assumptions now returned to the bitmask representation, called the existing geometry helpers, and returned `Result<(), BlocusError>` with the correct variants. The improvement was consistent across the targets I tried, not a one-off.
+- **Evidence:**
+  - Repository serialization script: [`engine/serialize.py`](../../engine/serialize.py) 
+
+**Prompt/Context Used:**
+```
+Implement a Rust function for the Blokus engine:
+
+fn is_legal_placement(
+    board: &Board,
+    piece: &Piece,
+    position: Position,
+    player: Player,
+) -> bool
+
+The function checks that the piece, placed at `position` for `player`,
+fits inside the board, does not overlap any existing piece, does not
+edge-touch a same-color piece, and corner-touches at least one
+same-color piece (first move excepted: must cover the player's start
+square instead). Use chain-of-thought to reason through the cases
+before writing the code, and include unit tests.
+```
+
+**AI Output:**
+```rust
+pub fn is_legal_placement(
+    board: &Board,
+    piece: &Piece,
+    position: Position,
+    player: Player,
+) -> bool {
+    let mut absolute_cells = Vec::with_capacity(piece.cells.len());
+
+    for relative in &piece.cells {
+        let absolute = Position {
+            row: position.row + relative.row,
+            col: position.col + relative.col,
+        };
+
+        // 1. Piece must fit entirely inside the board.
+        if !Board::in_bounds(absolute) {
+            return false;
+        }
+
+        // 2. Piece must not overlap any existing piece.
+        if board.get(absolute).is_some() {
+            return false;
+        }
+
+        absolute_cells.push(absolute);
+    }
+
+    let is_first_move = !board.has_player_piece(player);
+
+    if is_first_move {
+        let start_square = player.start_square();
+
+        // First move must cover the player's starting square.
+        return absolute_cells.contains(&start_square);
+    }
+
+    let edge_offsets = [
+        (-1, 0),
+        (1, 0),
+        (0, -1),
+        (0, 1),
+    ];
+
+    let corner_offsets = [
+        (-1, -1),
+        (-1, 1),
+        (1, -1),
+        (1, 1),
+    ];
+
+    let mut has_same_color_corner_contact = false;
+
+    for cell in &absolute_cells {
+        // 3. Cannot edge-touch a same-color piece.
+        for (dr, dc) in edge_offsets {
+            let neighbor = Position {
+                row: cell.row + dr,
+                col: cell.col + dc,
+            };
+
+            if Board::in_bounds(neighbor) && board.get(neighbor) == Some(player) {
+                return false;
+            }
+        }
+
+        // 4. Must corner-touch at least one same-color piece.
+        for (dr, dc) in corner_offsets {
+            let neighbor = Position {
+                row: cell.row + dr,
+                col: cell.col + dc,
+            };
+
+            if Board::in_bounds(neighbor) && board.get(neighbor) == Some(player) {
+                has_same_color_corner_contact = true;
+            }
+        }
+    }
+
+    has_same_color_corner_contact
+}
+```
+*Failure modes visible in this output:* (1) `Board`, `Piece`, `Position`, `Player` are all hallucinated — none of these signatures exist in `blocus-core`. This is not surprising without proper context engeneering. 
+
+---
+
 ### Counterexample 1: `[Title]`
 
 **Failure Description:**  
