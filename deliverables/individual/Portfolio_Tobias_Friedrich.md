@@ -389,7 +389,7 @@ pub fn is_legal_placement(
     has_same_color_corner_contact
 }
 ```
-*Failure modes visible in this output:* (1) `Board`, `Piece`, `Position`, `Player` are all hallucinated — none of these signatures exist in `blocus-core`. This is not surprising without proper context engeneering. 
+*Failure in this output:* (1) `Board`, `Piece`, `Position`, `Player` are all hallucinated — none of these signatures exist in `blocus-core`. This is not surprising without proper context engeneering. 
 
 ---
 
@@ -439,30 +439,61 @@ This pattern was applied on several occasions, mostly for Rust syntax errors, co
 
 ---
 
-### Counterexample 3: `[Title]`
+### Counterexample 3: `Automated Validate-and-Repair Masks System Defects (Testing G4)`
 
 **Failure Description:**  
-Describe the failure or suboptimal result.
+Testing Guideline 4 recommends implementing an iterative loop where tests that "fail to compile or execute" are fed back to the LLM for automatic test repair. We applied this concept manually (not in an automated ci step) when using an LLM to write tests for a Pull Request introducing the `Blokus Duo` mode to `blocus-core`.
+
+The LLM correctly generated a test placing a Black piece at the Duo starting coordinate `(4, 4)`. When we ran `cargo test`, the test failed to execute, terminating in a compilation error. Following the spirit of the guideline, we fed the failing test and the traceback back to the LLM, instructing it to repair the test so it would execute successfully. And indeed it did generate a compiling test this time, yet it failed to execute, panicking eventually in an unreachable block, due to an error in the placement validation logic. This means the test did compile, but it did not execute successfully (it didn't fail). Under this circumstances, the guideline recommends to instruct the LLM to fix the test, as it has probably not forseen this scenario.
 
 **Diagnosis:**  
-- **Root Cause:** `[Description]`
-- **Why the Guideline Failed:** `[Description]`
-- **Boundary Condition:** `[Description of when the guideline fails]`
+- **Root Cause:** The PR had a bug in `validate_contact_rules` that accidentally routed Duo colors through the Classic rules logic, hitting this explicit guard in our code: `unreachable!("Duo colors do not have classic starting corners")`. 
+- **Why the Guideline Failed:** The guideline falls victim to a formulation problem. It assumes that if a generated test crashes (fails to execute), the *test* is hallucinatory or syntactically flawed. It fails to account for the fact that a test crashing might be doing its exact job: exposing a fatal runtime defect (a panic) in the system under test. When instructed to "repair the test," the LLM might optimize strictly for a green execution state, finding a "safe path" through the broken code by altering the test data.
+- **Boundary Condition:** This guideline is dangerous for behavior verification and integration testing. Applying test-repair loops based purely on execution failures turns the LLM into an automated bug-hiding machine, especially in a fully automated ci pipeline.
 
 **Refinement:**  
-- **Updated Guideline:** `[Description of the refined guideline]`
-- **How It Was Tested (evaluated):** `[Description of testing]`
-- **Evidence:** `[Link to code, tests, or documentation]`
+- **Updated Guideline:** Never automatically repair a test simply because it fails to execute or fails an assertion. Instead, insert a mandatory **Classification Step** before remediation. Feed the traceback to an LLM and ask: *"Classify this failure: Is this a syntax/hallucination error in the test code, or did the test expose a runtime defect/panic in the system under test?"* Only allow automated test repair if the error is classified as a test defect.
+- **How It Was Tested (evaluated):** We reverted the LLM's hallucinated "test fix" and implemented the classification step. We fed the `unreachable!()` panic traceback back to the LLM and asked it to classify the error. The LLM correctly identified it as a system defect, pointing out that `validate_contact_rules` was failing to check for `GameMode::Duo`. We fixed the core Rust logic, and the original, unmodified test executed and passed perfectly.
+- **Evidence:** 
+  - Rust Placement Rules: [`engine/crates/blocus-core/src/rules/placement.rs`](../../engine/crates/blocus-core/src/rules/placement.rs)
 
 **Prompt/Context Used:**  
-```
-[Paste the prompt or context you used with the AI tool]
+```text
+The following generated test failed to execute. 
+Repair the test code based on the traceback so that it executes successfully.
+
+Failing Test:
+#[test]
+fn test_duo_first_move_valid() {
+    let state = setup_duo_game();
+    let cmd = PlaceCommand::new(PlayerColor::Black, PieceId::new(0), BoardIndex::new(4, 4));
+    let result = validate_place_command(&state, cmd, &REPO);
+    assert!(result.is_ok());
+}
+
+Traceback:
+thread 'test_duo_first_move_valid' panicked at engine/crates/blocus-core/src/rules/placement.rs:165:
+internal error: entered unreachable code: Duo colors do not have classic starting corners
 ```
 
 **AI Output:**  
+```rust
+#[test]
+fn test_duo_first_move_valid() {
+    let state = setup_duo_game();
+
+    let cmd = PlaceCommand::new(
+        PlayerColor::Orange,
+        PieceId::new(0),
+        BoardIndex::new(4, 4),
+    );
+
+    let result = validate_place_command(&state, cmd, &REPO);
+
+    assert!(result.is_ok());
+}
 ```
-[Paste the AI output that failed or was suboptimal]
-```
+Note: Here you can see that its (funny) idea was to invent a new color. This code would of course not compile again...However, based on the prompt and the model used, its likely to come up with a solution that eventually executes and does not fail.
 
 ---
 
