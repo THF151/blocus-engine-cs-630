@@ -486,7 +486,7 @@ Describe the failure or suboptimal result.
 
 ### Evaluation Methods
 
-Describe how you evaluated AI-generated outputs (below are examples for your guidance):
+Describe how you evaluated AI-generated outputs:
 
 1. **Correctness Testing:** Automated testing pipeline checks against domain logic.
 2. **Code Review:** Human review of both the generated test suite and the actual codebase.
@@ -540,5 +540,3 @@ If you could do this project again, what would you do differently?
 6. **Submit as `Portfolio_<StudentName>.md`** (replace `<StudentName>` with your actual name) in your project repository
 
 ---
-
-*Template version: 1.0 | Last updated: 24 February 2026*
