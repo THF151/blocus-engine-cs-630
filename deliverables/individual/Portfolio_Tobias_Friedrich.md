@@ -27,13 +27,9 @@ I setup the GitHub CI pipeline. The pipeline runs checks for the Flutter fronten
 
 **Evidence Links:**
 - **CI Pipeline:** [`/.github/workflows/ci.yml`](../../.github/workflows/ci.yml)
-- **Engine Makefile:** [`engine/Makefile`](../../engine/Makefile)
-- **FastAPI Makefile:** [`backend/Makefile`](../../backend/Makefile)
-- **Flutter Makefile:** [`frontend/Makefile`](../../frontend/Makefile)
 
 **Key Contributions:**
 - Added separate CI jobs for frontend, backend, and engine.
-- Added format, lint, typecheck, test, and coverage checks.
 
 ---
 
@@ -54,14 +50,6 @@ I owned the Rust core engine package. This package contains the main game logic 
 
 **Evidence Links:**
 - **Core Engine Crate:** [`engine/crates/blocus-core/`](../../engine/crates/blocus-core/)
-- **Engine Facade:** [`engine/crates/blocus-core/src/engine/mod.rs`](../../engine/crates/blocus-core/src/engine/mod.rs)
-- **Board Logic:** [`engine/crates/blocus-core/src/board/`](../../engine/crates/blocus-core/src/board/)
-- **Game Config:** [`engine/crates/blocus-core/src/config/mod.rs`](../../engine/crates/blocus-core/src/config/mod.rs)
-- **Move Generation:** [`engine/crates/blocus-core/src/movegen/mod.rs`](../../engine/crates/blocus-core/src/movegen/mod.rs)
-- **Placement Rules:** [`engine/crates/blocus-core/src/rules/placement.rs`](../../engine/crates/blocus-core/src/rules/placement.rs)
-- **Scoring:** [`engine/crates/blocus-core/src/scoring/mod.rs`](../../engine/crates/blocus-core/src/scoring/mod.rs)
-- **Hashing:** [`engine/crates/blocus-core/src/hash/mod.rs`](../../engine/crates/blocus-core/src/hash/mod.rs)
-- **Transposition Table:** [`engine/crates/blocus-core/src/transposition.rs`](../../engine/crates/blocus-core/src/transposition.rs)
 - **Tests** [`engine/crates/blocus-core/tests/`](../../engine/crates/blocus-core/tests/)
 
 **Key Contributions:**
@@ -91,10 +79,6 @@ I owned the Rust core engine package. This package contains the main game logic 
 - Added compact board representation with padded-row bit indexing.
 - Added inventory tracking for all 21 Blokus pieces.
 - Added advanced scoring with completion and monomino-last bonuses.
-- Added deterministic position hashing for state verification and future AI/search usage.
-- Added a transposition table primitive for later search-based AI work.
-- Added structural state validation to reject corrupted board masks, invalid turn state, inactive colors, and invalid Duo state.
-
 ---
 
 ### Package Name: `blocus-python`
@@ -107,27 +91,15 @@ In a next sprint, we can develop a similar package to provide dart / ... binding
 - Expose the Rust core engine to Python.
 - Convert Python input types into validated Rust domain types.
 - Provide Python classes for game config, commands, state, results, pieces, and enums.
-- Map Rust errors into structured Python exceptions.
-- Support JSON serialization and deserialization of game state. (As requested for this Team Project)
-- Add Python tests for the binding contract.
-- Keep the Python API stable enough for backend usage.
-- Provide pyi bindings for python linters
+- Map Rust errors into structured Python exceptions
 
 **Evidence Links:**
 - **Python Binding Crate:** [`engine/crates/blocus-python/`](../../engine/crates/blocus-python/)
-- **PyO3 Module Entry:** [`engine/crates/blocus-python/src/lib.rs`](../../engine/crates/blocus-python/src/lib.rs)
-- **Engine Binding:** [`engine/crates/blocus-python/src/engine.rs`](../../engine/crates/blocus-python/src/engine.rs)
-- **Command Binding:** [`engine/crates/blocus-python/src/command.rs`](../../engine/crates/blocus-python/src/command.rs)
-- **Config Binding:** [`engine/crates/blocus-python/src/config.rs`](../../engine/crates/blocus-python/src/config.rs)
-- **State Binding:** [`engine/crates/blocus-python/src/state.rs`](../../engine/crates/blocus-python/src/state.rs)
-- **Result Binding:** [`engine/crates/blocus-python/src/result.rs`](../../engine/crates/blocus-python/src/result.rs)
-- **Piece Binding:** [`engine/crates/blocus-python/src/pieces.rs`](../../engine/crates/blocus-python/src/pieces.rs)
-- **Error Mapping:** [`engine/crates/blocus-python/src/errors.rs`](../../engine/crates/blocus-python/src/errors.rs)
 - **Python Tests:** [`engine/crates/blocus-python/python_tests/`](../../engine/crates/blocus-python/python_tests/)
 - **PYI Python Types** [`backend/src/blocus_engine.pyi`](../../backend/src/blocus_engine.pyi)
 
 **Key Contributions:**
-- Added the Python `BlocusEngine` wrapper with methods for:
+- Added the Python `BlocusEngine` wrapper with methods for (e.g.):
   - `initialize_game`
   - `apply`
   - `get_valid_moves`
@@ -135,46 +107,6 @@ In a next sprint, we can develop a similar package to provide dart / ... binding
   - `has_any_valid_move`
   - `has_any_valid_move_for_piece`
   - `score_game`
-- Added Python command objects:
-  - `PlaceCommand`
-  - `PassCommand`
-- Added Python config objects:
-  - `GameConfig`
-  - `GameMode`
-  - `PlayerSlots`
-  - `SharedColorTurn`
-- Added Python state APIs:
-  - `board_matrix`
-  - `cell`
-  - `occupied_cells`
-  - `board_counts`
-  - `used_piece_ids`
-  - `available_piece_ids`
-  - `inventory_summary`
-  - `to_json`
-  - `from_json`
-- Added Python wrappers for pieces and orientations.
-- Added stable enum-like classes for:
-  - `PlayerColor`
-  - `GameStatus`
-  - `ScoringMode`
-  - `GameMode`
-  - `DomainEventKind`
-  - `DomainResponseKind`
-- Added structured Python errors:
-  - `BlocusError`
-  - `InputError`
-  - `RuleViolationError`
-  - `EngineError`
-- Added JSON round-trip support with hash recomputation and state validation.
-- Added Duo-specific Python API support:
-  - `GameMode.DUO`
-  - `PlayerColor.BLACK`
-  - `PlayerColor.WHITE`
-  - `GameConfig.duo(...)`
-  - 14x14 board output
-  - Duo opening rules
-  - Duo JSON state round trips
 - Added Python tests covering commands, enums, config, state JSON, board/piece APIs, Duo mode, edge cases, errors, passing, and scoring.
 
 ---
@@ -433,7 +365,7 @@ Refinement:
 
 - **Updated Guideline:** Do not use line-by-line explanation as the default first step for already-localized errors. Instead, ask for a short explanation of the failure, then a detailed trace-based diagnosis using the compiler/test output. Reserve full line-by-line explanation for persistent logical errors that remain unresolved after one or two cheaper debugging rounds. Please further note, that this is not equivalent to full human debugging. The LLM is not being asked to discover an unknown defect from scratch; it is being asked to fix an error that has already been found by a compiler, test, or CI trace. The prompt should therefore center on the observed failure and project constraints, not on a complete explanation of every line.
 - **How It Was Tested:** I applied both styles across several Rust and Python-binding debugging rounds. For syntax errors and failing test cases, short trace-focused prompts were faster and usually sufficient. Full line-by-line explanation was only useful when the same logical bug survived one or two direct repair attempts.
-- **Evidence** Relevant examples came from Rust core and PyO3 binding debugging during make check, cargo test, validation.
+- **Evidence:** Relevant examples came from Rust core and PyO3 binding debugging during make check, cargo test, validation.
 
 Prompt/Context Used:
 ```
@@ -542,7 +474,7 @@ Describe how you evaluated AI-generated outputs:
 
 ### Time Investment
 
-Approximately how much time did you spend on: (I can only recommend to put this at the beginning of the document for the next classes)
+Approximately how much time did you spend on: (I would recommend to put this at the beginning of the document for the next classes)
 - AI prompting and refinement: `15 hours`
 - Reviewing AI outputs: `30 hours`
 - Testing and validation: `30 hours`
@@ -556,23 +488,25 @@ Approximately how much time did you spend on: (I can only recommend to put this 
 
 ### What You Learned
 
-- `[Lesson 1]`
-- `[Lesson 2]`
-- `[Lesson 3]`
+I've been working with LLMs before, but have never dived so deep into grounding LLM applications in literature. My core lessons learned are
+
+- With growing model sizes and shrinking token limits, token engeneering becomes more and more important. Using cheap local models for easy tasks, and using more sophisticated tools like codex or claude code only when necessary .
+- LLMs today already enable us to speed up the development process tremendously. Both our prototype in the beginning, and the final product would have taken much more time only 10 years ago. By ensuring test coverage right from the beginning, and by using an automated pipeline, code quality can be ensured very well in very little time. 
+- When we worked on the design guideline package, the guideline that interested me the most was the one concerning UML Diagrams. When I tried generating valid UML logic using GPT 3 a couple of years ago, it was not nearly as capable of doing so than current SOTA models, yet, still, generating them faithfully to the actual UML definition is still an area that needs a lot of improvement. While you can easily use them for smaller sections, it is still not able to control a full system at once. And this is, in my oppinion, not due to missing intelligence, but due to the absence of a capable framework for visualization, as LLMs seem to be capable at expressing the correct logic, but both mermaid and PlantUML fail to correctly vizualize it. 
 
 ### Skills Developed
 
-- `[Skill 1]`
-- `[Skill 2]`
-- `[Skill 3]`
+- Test-Driven LLM-Development
+- Literature-Based Research on LLM Prompting and Usage techniques
+- Critical Review of LLM-Output
 
 ### Future Improvements
 
 If you could do this project again, what would you do differently?
 
-- `[Improvement 1]`
-- `[Improvement 2]`
-- `[Improvement 3]`
+- First, I would reduce the feature scope to better match the intended 6 ECTS workload per person. The final engine became substantially larger than necessary for evaluating the guideline packages. 
+- I would evaluate smaller local models like qwen 3.6 more systematically. Most implementation and review work relied on strong commercial models and agentic coding tools, which produced good results but were limited by cost, availability, and usage caps.
+- I would propose a project with a stronger real-world use case. The Blokus engine worked well as a controlled software-engineering task, but it is unlikely to be used after the module. Since the course is about applying LLM guidelines to realistic software development, there would be strong value in allowing students to apply the guidelines to active research tools, private projects, startup prototypes, or case studies from other modules. A project with real users or a concrete business case would make the tradeoffs around requirements, maintainability, testing, and deployment more meaningful.
 
 ---
 
