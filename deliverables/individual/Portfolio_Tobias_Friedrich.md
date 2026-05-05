@@ -236,26 +236,32 @@ The biggest takeaway is that visual planning beats code or adr reading — by a 
 
 ---
 
-### Application 3: `[Guideline Name]` from `[Topic]` Team
+### Application 3: `Iterative Remediation and Self-Correction Loops` from `Coding` Team
 
 **Guideline Description:**  
-Briefly describe the guideline you applied.
+Coding Guideline 3 recommends a structured Plan-Execute-Review loop for AI-assisted coding. The first output should be treated as a draft, not as final code. Failed test output, formatter errors, linting errors, and review findings should be fed back into the model so it can remediate the implementation. The guideline also recommends using a reviewer-style pass to catch silent hallucinations such as incomplete behavior, performance problems, or security issues that may not appear as syntax errors.
 
 **Context:**  
-What task or feature were you working on when you applied this guideline?
+I applied this guideline when extending the Rust `blocus-core` engine and the `blocus-python` binding from Classic Blokus to Blokus Duo. The Duo variant affected several parts of the system: board geometry, active colors, opening targets, configuration validation, scoring restrictions, JSON round trips, Python-facing APIs, and tests. Because the change crossed both Rust and Python boundaries, a one-shot implementation would have been risky.
 
-**Application Process:**  
-1. `[Step 1]`
-2. `[Step 2]`
-3. `[Step 3]`
+**Application Process:**
+1. After working out the initial requirements and required behavioral changes, I started a Codex task specifically for the Duo variant.
+2. I first asked Codex to plan the implementation before writing code. The plan decomposed the Duo extension into smaller changes such as Duo board geometry, Duo color support, fixed starting points, scoring-mode restrictions, state validation, Python API exposure, and test coverage.
+3. I then let Codex execute the implementation incrementally. I explicitly instructed it to keep the repository in a working state and to verify changes through the existing project pipeline, especially `make fmt` and `make check`.
+4. I required Codex to generate tests alongside the implementation, preferably through the public/friendly API first. This made the expected Duo behavior executable before relying only on internal implementation checks.
+5. Whenever validation exposed a failure or missing behavior, the error output or review finding was fed back into Codex for remediation before moving to the next step. This followed the guideline’s Plan-Execute-Review loop rather than accepting the first generated patch.
+6. After Codex produced the implementation, I manually reviewed the result against the Duo requirements and existing Classic behavior. This acted as the reviewer pass for silent issues: the code had to preserve Classic mode, expose Duo cleanly through Python, and avoid implementing only the happy path.
 
-**Outcome:**  
-- **What worked:** `[Description]`
-- **What didn't work:** `[Description]`
-- **Evidence:** `[Link to prompt, code, tests, or documentation]`
+**Outcome:**
+- **What worked:** This guideline matched the Codex workflow very well. Codex was able to plan, implement, run or respond to validation steps, and revise the implementation until the codebase passed the existing checks. The result was a working Duo implementation in about 20 minutes, including tests and Python-facing support. The existing pipeline made the remediation loop concrete: failures were not discussed abstractly but tied to formatter, lint, test, and coverage feedback.
+- **What didn't work:** The main limitation was not the quality of the generated code, but the practical availability of the tool. In recent weeks, Codex and Claude Code usage limits became much more restrictive for our workflow, effectively allowing only about one comprehensive task every five hours. That makes this approach hard to rely on for larger continuous workflows, even though the individual task quality was good.
+- **Evidence:**
+  - Codex-generated Duo implementation commit: [`https://github.com/THF151/blocus-engine-cs-630/commit/58ec04ed5b595249a3fb9920481a0fea8e2aa656`](https://github.com/THF151/blocus-engine-cs-630/commit/58ec04ed5b595249a3fb9920481a0fea8e2aa656)
+  - The commit shows the planned, implemented, tested, and remediated Duo extension across the Rust core, Python binding, and test suite.
+  - The relevant changes include Duo board geometry, Duo colors, Duo opening rules, scoring-mode validation, JSON round trips, Python API exposure, and additional Rust/Python tests.
 
 **Reflection:**  
-What did you learn from applying this guideline? Would you use it again in a similar context?
+This guideline fits the Duo implementation better than a pure decomposition guideline because the decisive part was not only splitting the work, but repeatedly validating and repairing the generated code. Codex already incorporates much of this workflow: it plans, edits, observes failures, and revises. However, the guideline was still necessary because we had to define the verification contract: use the existing pipeline, keep the codebase green, generate friendly API tests first, target high coverage, and preserve Classic behavior. My main takeaway is that agentic coding is most useful when the repository already has a strong validation pipeline. Without that pipeline, the model could still produce plausible code, but there would be no reliable remediation signal.
 
 ---
 
