@@ -283,7 +283,7 @@ Coding G4 recommends breaking complex requirements into atomic, testable units (
 
 **Refinement:**
 - **Updated Guideline:** Treat G4 as inseparable from G1. Every atomic prompt must carry, in addition to the function specification: (i) the AGENTS.md or equivalent project conventions, (ii) the public interface and relevant trait definitions of the surrounding module, and (iii) any utility helpers the function is expected to use. Concretely: do not prompt for a function in isolation. Prompt for a function plus a serialized slice of the repository it has to live inside.
-- **How It Was Tested (evaluated):** I built a serialization script that walks the repository and emits a single markdown bundle containing the public API of all modules, the relevant trait/type definitions. The bundle is sized to fit comfortably inside ChatGPT's ~100k-token context window. I then re-ran the same atomic prompt on `is_legal_placement` and several other targets, this time with the serialized bundle prepended. The same prompt that previously hallucinated several redundancies and assumptions now returned to the bitmask representation, called the existing geometry helpers, and returned `Result<(), BlocusError>` with the correct variants. The improvement was consistent across the targets I tried, not a one-off.
+- **How It Was Tested (evaluated):** I built a serialization script that walks the repository and emits a single markdown bundle containing the public API of all modules, the relevant trait/type definitions. The bundle is sized to fit comfortably inside ChatGPT's ~100k-token context window. I then re-ran the same atomic prompt on `is_legal_placement` and several other targets, this time with the serialized bundle prepended. The same prompt that previously hallucinated several redundancies and assumptions now returned to the bitmask representation, called the existing geometry helpers, and returned `Result<(), BlocusError>` with the correct variants. The improvement was consistent across the targets I tried, not a one-off. Note: the new version still got refined manually, and later on renamed, yet I thought it showed the failure pretty good.
 - **Evidence:**
   - Repository serialization script: [`engine/serialize.py`](../../engine/serialize.py) 
 
@@ -393,56 +393,48 @@ pub fn is_legal_placement(
 
 ---
 
-### Counterexample 1: `[Title]`
+### Counterexample 2: Line-by-Line Explanation Is Too Expensive for already localized Rust Errors
 
 **Failure Description:**  
-Describe the failure or suboptimal result. What guideline was applied? What was the expected outcome? What actually happened?
+Debugging Guideline 1 recommends asking the LLM to explain the code line by line before requesting a fix. I applied this pattern several times while fixing Rust engine and binding issues, especially syntax errors, compiler errors, and failing tests where the relevant error was already localized by rustc, cargo test, or CI output.
+
+The expected outcome was that the explanation step would help the model identify the bug more reliably before patching. In practice, the line-by-line explanation often added little value. For compiler errors and already-failing test cases, the important information was usually in the trace, assertion failure, or error message, not in a full natural-language walk-through of the surrounding method. On larger methods, the explanation also consumed many tokens describing correct or obvious lines before reaching the actual issue.
 
 **Diagnosis:**  
-- **Root Cause:** `[Description]`
-- **Why the Guideline Failed:** `[Description]`
-- **Boundary Condition:** `[Description of when the guideline fails]`
 
-**Refinement:**  
-- **Updated Guideline:** `[Description of the refined guideline]`
-- **How It Was Tested (evaluated):** `[Description of testing]`
-- **Evidence:** `[Link to code, tests, or documentation]`
+- **Root Cause:** The guideline assumes that the main difficulty is locating the bug inside the code. In my debugging use case, the bug was often already localized by the compiler, test framework, or CI logs. The missing step was not discovery, but producing a codebase-compatible fix.
+- **Why the Guideline Failed:** A line-by-line explanation is inefficient when the error is already visible in the trace or when the method is large and mostly correct. It can spend many tokens explaining unaffected code while failing to focus on the runtime context, failing assertion, or Rust type/lifetime error that actually matters.
+- **Boundary Condition:** The failure is reproducible for syntax errors, compiler diagnostics, and focused test failures where the trace already identifies the failing file, line, assertion, or type mismatch. It is also common in larger methods where line-by-line explanation scales poorly.
 
-**Prompt/Context Used:**  
+Refinement:
+
+- **Updated Guideline:** Do not use line-by-line explanation as the default first step for already-localized errors. Instead, ask for a short explanation of the failure, then a detailed trace-based diagnosis using the compiler/test output. Reserve full line-by-line explanation for persistent logical errors that remain unresolved after one or two cheaper debugging rounds. Please further note, that this is not equivalent to full human debugging. The LLM is not being asked to discover an unknown defect from scratch; it is being asked to fix an error that has already been found by a compiler, test, or CI trace. The prompt should therefore center on the observed failure and project constraints, not on a complete explanation of every line.
+- **How It Was Tested:** I applied both styles across several Rust and Python-binding debugging rounds. For syntax errors and failing test cases, short trace-focused prompts were faster and usually sufficient. Full line-by-line explanation was only useful when the same logical bug survived one or two direct repair attempts.
+- **Evidence** Relevant examples came from Rust core and PyO3 binding debugging during make check, cargo test, validation.
+
+Prompt/Context Used:
 ```
-[Paste the prompt or context you used with the AI tool]
-```
-
-**AI Output:**  
-```
-[Paste the AI output that failed or was suboptimal]
-```
-
----
-
-### Counterexample 2: `[Title]`
-
-**Failure Description:**  
-Describe the failure or suboptimal result.
-
-**Diagnosis:**  
-- **Root Cause:** `[Description]`
-- **Why the Guideline Failed:** `[Description]`
-- **Boundary Condition:** `[Description of when the guideline fails]`
-
-**Refinement:**  
-- **Updated Guideline:** `[Description of the refined guideline]`
-- **How It Was Tested (evaluated):** `[Description of testing]`
-- **Evidence:** `[Link to code, tests, or documentation]`
-
-**Prompt/Context Used:**  
-```
-[Paste the prompt or context you used with the AI tool]
+You are a senior Rust engineer debugging a rule-heavy game engine.
+Prioritize minimal, idiomatic, codebase-compatible fixes over broad rewrites.
+Context:
+- Package/module: [PACKAGE_OR_MODULE]
+- Intended behavior: [INTENDED_BEHAVIOR]
+- Relevant code excerpt:
+[CODE_EXCERPT]
+Observed failure:
+[COMPILER_ERROR_OR_TEST_TRACE]
+Task:
+1. Briefly explain the failure in 3-5 sentences.
+2. Classify the error into an "engine error" or a "test error"
+3. Use the trace to identify the most likely root cause.
+4. Propose the smallest Rust-compatible fix.
+5. Mention any regression test that should be added or updated.
+Do not explain the code line by line unless the trace is insufficient.
 ```
 
-**AI Output:**  
+**AI Output:**
 ```
-[Paste the AI output that failed or was suboptimal]
+This pattern was applied on several occasions, mostly for Rust syntax errors, compiler diagnostics, and failing test cases. The line-by-line explanation outputs were usually long paraphrases of already-correct code and did not materially improve the fix. The more effective responses focused directly on the failing trace, identified the localized cause, and proposed a small patch with a matching regression test.
 ```
 
 ---
