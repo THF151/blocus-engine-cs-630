@@ -183,7 +183,8 @@ In a next sprint, we can develop a similar package to provide dart / ... binding
 
 > **Note:** Document at least 3 applications of guidelines from other teams' guideline packages. For each, describe the guideline, how you applied it, and the outcome.
 
-### Application 1: Detailed Personas (G2) + Proactive Ambiguity Clarification (G3) from Requirements Team
+### Application 1: `
+`Detailed Personas (G2)` + `Proactive Ambiguity Clarification` (G3) from Requirements Team
 
 **Guideline Description:**  
 A combined application of two guidelines from the Requirements team. G2 says to give the LLM a rich, structured persona (e.g. as JSON) so the elicitation reflects the concerns that persona would care about. G3 says the LLM should flag unclear statements *before* generating requirements, ask short clarification questions, and then embed the answers back into the requirement text. I also kept **G1 (Human-in-the-Loop)** active in the background: after each pass, I reviewed the output and gave short feedback to steer the next iteration.
@@ -205,29 +206,33 @@ The first elicitation pass for the Rust `blocus` engine. The engine had to cover
   - Requirements document produced by this elicitation: [`deliverables/individual/evidence/requirements-engine.md`](../../deliverables/individual/evidence/requirements-engine.md)
 
 **Reflection:**  
-The combination is stronger than any of the three guidelines alone. Of course assigning a role is like the first rule in Prompt Engeneering 101, yet it seems to work out. The takeaway on the schema is worth keeping: neither G2 nor G3 prescribes an output format, and without one the LLM will fall back to loose prose. I would apply this combination again for any rule-driven domain (board games, regulatory specs, protocol implementations) where the source text has known soft spots. For more open-ended or creative domains I would weaken the persona and probably drop G3, since "ambiguity" there is often the point.
+Of course assigning a role is like the first rule in Prompt Engeneering 101, yet it seems to work out. The takeaway on the schema is worth keeping: neither G2 nor G3 prescribes an output format, and without one the LLM will fall back to loose prose. I would apply this combination again for any rule-driven domain (board games, regulatory specs, protocol implementations) where the source text has known soft spots. For more open-ended or creative domains I would weaken the persona and probably drop G3, since "ambiguity" there is often the point.
+
 ---
 
-### Application 2: `[Guideline Name]` from `[Topic]` Team
+### Application 2: `UML Specification (Sequence Diagrams)` from `Design` Team
 
 **Guideline Description:**  
-Briefly describe the guideline you applied.
+Guideline 3 is the four-stage UML workflow: prepare inputs → core prompting principles → diagram-type-specific guidance → validation. For sequence diagrams specifically, the relevant elements are: explicit instructions on `loop`/`alt`/`opt` fragments (not letting the LLM scatter or over-nest them), manual verification of the initiating actor, inline `note right` traceability with REQ IDs at every major message or alternative block, and storing the result as text-based diagrams-as-code in version control rather than as static images.
 
 **Context:**  
-What task or feature were you working on when you applied this guideline?
+We needed sequence diagrams to ground the actual design — specifically the two highest-traffic flows that cross the Python-Rust boundary: applying a place command (`engine.apply(state, PlaceCommand)`), and legal-move generation (`engine.get_valid_moves(state, player, color)` ultimately driving `LegalMoveIter`). We needed a way to plan the design fast and discuss possible optimization strategies to avoid expensive runtime mistakes and to enable proper AI Training in a later sprint. Of course these can be discussed in chat, but UML Diagrams are much faster as long as the LLM can produce them syntactically and semantically correct.
 
-**Application Process:**  
-1. `[Step 1]`
-2. `[Step 2]`
-3. `[Step 3]`
+**Application Process:**
+1. Started a fresh LLM session and fed it the serialized engine prototype codebase. Alongside we fed in the original Requirement document and a basic ADR. This is the Stage-1 "architecture documentation as primary input" step.
+2. Asked for two sequence diagrams (one per flow), explicitly required Mermaid as the output notation, and listed the participants up front to keep them under the recommended cap. Required `note right` blocks tagged with REQ IDs (`REQ-FFI-001`, `REQ-RULE-001…008`, `REQ-MOVE-001`, …) at every validation step — Stage 2 traceability requirement.
+3. Applied the sequence-specific guidance from Stage 3: explicitly told the LLM where loops were genuinely cyclic and where alternatives were branching. Without that, the first draft tended to either flatten the iteration into a straight call sequence or over-nest decisions.
+4. Manually verified the initiating actor on both diagrams (Stage 3, sequence guidance #2). Both flows do start at the Python caller — there are no event-driven background paths in the engine — so no correction was needed here, but the check was deliberate rather than assumed.
+5. Validated by rendering the Mermaid in a live preview and reviewing the result against the actual code. Fixed minor syntax issues from the first draft, then iterated once on the move-gen flow because the first version expressed the iteration semantics correctly but described an inefficient walk that didn't match the lazy cursor in `LegalMoveIter`.
 
-**Outcome:**  
-- **What worked:** `[Description]`
-- **What didn't work:** `[Description]`
-- **Evidence:** `[Link to prompt, code, tests, or documentation]`
+**Outcome:**
+- **What worked:** Planning the design visually was significantly faster than reading through code-snippets or large adrs line by line. It allowed for a very fast iteration discussing different kinds of optimization methods. By using a separate chat, we were able to come up with even more room for improvement. The traceability notes also paid off: every check in rule validation is now explicitly tied to a REQ ID, which makes it easy to spot later if a check is missing. The `loop` / `alt` / `opt` instructions kept the diagrams structurally honest. To ensure feasibility of complex algorithms, we made it propose short code snippets alongside the diagram.
+- **What didn't work (initially):** Two issues, both minor and both fixable in one round. First, Mermaid syntax: the first draft had inconsistent activation/deactivation pairs (more `+` than `-`) and used `\` for set difference in a note, which the parser didn't like. This was solved very quickly. Second, and more interesting, the first move-gen draft proposed a structurally correct but algorithmically inefficient loop for move generation stressing the necessity for a human or specifically prompted "Efficiency-Expert"-LLM oversight.
+- **Evidence:**
+  - Sequence diagrams (`apply(PlaceCommand)` + `get_valid_moves` / `LegalMoveIter`): [`deliverables/individual/evidence/uml-engine.md`](../../deliverables/individual/evidence/uml-engine.md)
 
 **Reflection:**  
-What did you learn from applying this guideline? Would you use it again in a similar context?
+The biggest takeaway is that visual planning beats code or adr reading — by a lot — for understanding algorithmic control flow. Once the diagrams were drafted, the engine's behavior fit on one page each, and the few real surprises were exactly the things worth discussing. The Stage-3 sequence-specific guidance pulled most of the weight here: explicit `loop`/`alt`/`opt` framing prevented both flattening and over-nesting, and the REQ-ID traceability turned the diagrams from illustrations into reviewable specifications. I would apply this again for any flow that crosses an API or FFI boundary, where understanding *who* calls *whom* and *which checks happen at which layer* - not only for planning but also for documentation purposes. I would also keep the same rule of thumb — let the LLM draft, then push back on anything that looks structurally plausible but doesn't match best practices.
 
 ---
 
