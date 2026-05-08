@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import pytest
 
-from blocus_backend.engine_adapter import ClassicEngineAdapter, EngineUnavailableError
+pytest.importorskip("blocus_engine")
+
+from blocus_backend.engine_adapter import ClassicEngineAdapter, EngineUnavailableError  # noqa: E402
 
 GAME_ID = "00000000-0000-0000-0000-000000009001"
 PLAYER_ONE = "00000000-0000-0000-0000-000000000001"

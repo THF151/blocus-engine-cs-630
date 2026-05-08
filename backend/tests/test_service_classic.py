@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import pytest
-from test_websocket_classic import FakeClassicEngine
+from conftest import FakeClassicEngine
 
 from blocus_backend.repository import InMemoryGameRepository
 from blocus_backend.service import GameService, ProtocolError, _ai_seat_for_color
