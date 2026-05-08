@@ -4,11 +4,23 @@ import json
 from typing import Any
 from uuid import uuid4
 
+from pydantic import BaseModel, ValidationError
+
 from blocus_backend.engine_adapter import ApplyResult
 from blocus_backend.repository import GameNotFoundError, GameRecord, GameRepository
+from blocus_backend.schemas import (
+    AttachAiRequest,
+    FourPlayerCreate,
+    LegalMovesRequest,
+    PassMoveRequest,
+    PlaceMoveRequest,
+    ThreePlayerCreate,
+    TwoPlayerCreate,
+)
 
 CLASSIC_COLORS = ["blue", "yellow", "red", "green"]
 CLASSIC_MODES = {"two_player", "three_player", "four_player"}
+SCORING_MODES = {"basic", "advanced"}
 MAX_AI_TURNS = 10_000
 
 
@@ -25,7 +37,16 @@ class GameService:
         self._engine = engine
 
     async def create_game(self, payload: dict[str, Any]) -> dict[str, Any]:
-        normalized = _normalize_create_game(payload)
+        mode = payload.get("mode")
+        if mode == "two_player":
+            normalized = _normalize_two_player(_parse(payload, TwoPlayerCreate))
+        elif mode == "three_player":
+            normalized = _normalize_three_player(_parse(payload, ThreePlayerCreate))
+        elif mode == "four_player":
+            normalized = _normalize_four_player(_parse(payload, FourPlayerCreate))
+        else:
+            raise ProtocolError("invalid_classic_mode", "Only Classic modes are supported")
+
         state = self._engine.create_game(normalized)
         metadata = _metadata_from_config(normalized)
         await self._repository.save_game(
@@ -41,34 +62,35 @@ class GameService:
         return _event("state_snapshot", game_id, self._engine.state_view(state))
 
     async def legal_moves(self, payload: dict[str, Any]) -> dict[str, Any]:
-        game_id = _required_str(payload, "game_id")
-        player_id = _required_str(payload, "player_id")
-        color = _classic_color(_required_str(payload, "color"))
-        record = await self._record(game_id)
+        request = _parse(payload, LegalMovesRequest)
+        color = _classic_color(request.color)
+        record = await self._record(request.game_id)
         state = self._engine.deserialize_state(record.state_json)
         return {
             "type": "legal_moves",
-            "game_id": game_id,
-            "player_id": player_id,
+            "game_id": request.game_id,
+            "player_id": request.player_id,
             "color": color,
-            "moves": self._engine.legal_moves(state, player_id, color),
+            "moves": self._engine.legal_moves(state, request.player_id, color),
         }
 
     async def place_move(self, payload: dict[str, Any]) -> dict[str, Any]:
-        game_id = _required_str(payload, "game_id")
-        payload["color"] = _classic_color(_required_str(payload, "color"))
-        record = await self._record(game_id)
+        request = _parse(payload, PlaceMoveRequest)
+        color = _classic_color(request.color)
+        record = await self._record(request.game_id)
         state = self._engine.deserialize_state(record.state_json)
-        result = self._engine.place_move(state, payload)
-        return await self._persist_apply_result(game_id, record, result)
+        command_payload = {**request.model_dump(), "color": color}
+        result = self._engine.place_move(state, command_payload)
+        return await self._persist_apply_result(request.game_id, record, result)
 
     async def pass_move(self, payload: dict[str, Any]) -> dict[str, Any]:
-        game_id = _required_str(payload, "game_id")
-        payload["color"] = _classic_color(_required_str(payload, "color"))
-        record = await self._record(game_id)
+        request = _parse(payload, PassMoveRequest)
+        color = _classic_color(request.color)
+        record = await self._record(request.game_id)
         state = self._engine.deserialize_state(record.state_json)
-        result = self._engine.pass_move(state, payload)
-        return await self._persist_apply_result(game_id, record, result)
+        command_payload = {**request.model_dump(), "color": color}
+        result = self._engine.pass_move(state, command_payload)
+        return await self._persist_apply_result(request.game_id, record, result)
 
     async def score(self, game_id: str) -> dict[str, Any]:
         record = await self._record(game_id)
@@ -80,21 +102,20 @@ class GameService:
         }
 
     async def attach_ai(self, payload: dict[str, Any]) -> dict[str, Any]:
-        game_id = _required_str(payload, "game_id")
-        player_id = _required_str(payload, "player_id")
-        color = _classic_color(_required_str(payload, "color"))
+        request = _parse(payload, AttachAiRequest)
+        color = _classic_color(request.color)
 
-        record = await self._record(game_id)
+        record = await self._record(request.game_id)
         metadata = dict(record.metadata)
         ai_seats = list(metadata.get("ai_seats", []))
-        seat = {"player_id": player_id, "color": color}
+        seat = {"player_id": request.player_id, "color": color}
         if seat not in ai_seats:
             ai_seats.append(seat)
         metadata["ai_seats"] = ai_seats
-        await self._repository.update_metadata(game_id, metadata)
+        await self._repository.update_metadata(request.game_id, metadata)
 
         state = self._engine.deserialize_state(record.state_json)
-        return _event("game_joined", game_id, self._engine.state_view(state))
+        return _event("game_joined", request.game_id, self._engine.state_view(state))
 
     async def advance_ai_turns(self, game_id: str) -> list[dict[str, Any]]:
         events: list[dict[str, Any]] = []
@@ -151,6 +172,25 @@ class GameService:
         if state_view["status"] == "finished":
             event["type"] = "game_finished"
         return event
+
+
+def _parse[ModelT: BaseModel](payload: dict[str, Any], model: type[ModelT]) -> ModelT:
+    try:
+        return model.model_validate(payload)
+    except ValidationError as error:
+        raise _validation_error_to_protocol_error(error) from error
+
+
+def _validation_error_to_protocol_error(error: ValidationError) -> ProtocolError:
+    first = error.errors()[0]
+    loc: tuple[Any, ...] = first.get("loc", ())
+    msg = first.get("msg", "validation failed")
+
+    if loc and loc[0] == "players":
+        return ProtocolError("invalid_players", f"Invalid players: {msg}")
+
+    field = ".".join(str(x) for x in loc) if loc else "(unknown)"
+    return ProtocolError("missing_field", f"Missing or invalid field: {field}")
 
 
 def _ai_seat_for_color(
@@ -233,38 +273,34 @@ def _scheduled_shared_green_player(
     return player_id
 
 
-def _normalize_create_game(payload: dict[str, Any]) -> dict[str, Any]:
-    mode = _required_str(payload, "mode")
-    if mode not in CLASSIC_MODES:
-        raise ProtocolError("invalid_classic_mode", "Only Classic modes are supported")
-
-    game_id = str(payload.get("game_id") or uuid4())
-    scoring = str(payload.get("scoring", "basic"))
-    if scoring not in {"basic", "advanced"}:
-        raise ProtocolError("invalid_scoring", "Scoring must be basic or advanced")
-
-    if mode == "two_player":
-        players = dict(payload.get("players", {}))
-        _require_keys(players, {"blue_red", "yellow_green"})
-        turn_order = list(CLASSIC_COLORS)
-    elif mode == "three_player":
-        players = dict(payload.get("players", {}))
-        _require_keys(players, {"blue", "yellow", "red", "shared_green"})
-        if not isinstance(players["shared_green"], list) or not players["shared_green"]:
-            raise ProtocolError("invalid_players", "shared_green must be a non-empty player list")
-        turn_order = list(CLASSIC_COLORS)
-    else:
-        players = dict(payload.get("players", {}))
-        _require_keys(players, set(CLASSIC_COLORS))
-        first_color = _classic_color(str(payload.get("first_color", "blue")))
-        turn_order = _rotated_turn_order(first_color)
-
+def _normalize_two_player(request: TwoPlayerCreate) -> dict[str, Any]:
     return {
-        "game_id": game_id,
-        "mode": mode,
-        "scoring": scoring,
-        "players": players,
-        "turn_order": turn_order,
+        "game_id": request.game_id or str(uuid4()),
+        "mode": "two_player",
+        "scoring": _scoring(request.scoring),
+        "players": request.players.model_dump(),
+        "turn_order": list(CLASSIC_COLORS),
+    }
+
+
+def _normalize_three_player(request: ThreePlayerCreate) -> dict[str, Any]:
+    return {
+        "game_id": request.game_id or str(uuid4()),
+        "mode": "three_player",
+        "scoring": _scoring(request.scoring),
+        "players": request.players.model_dump(),
+        "turn_order": list(CLASSIC_COLORS),
+    }
+
+
+def _normalize_four_player(request: FourPlayerCreate) -> dict[str, Any]:
+    first_color = _classic_color(request.first_color)
+    return {
+        "game_id": request.game_id or str(uuid4()),
+        "mode": "four_player",
+        "scoring": _scoring(request.scoring),
+        "players": request.players.model_dump(),
+        "turn_order": _rotated_turn_order(first_color),
     }
 
 
@@ -293,18 +329,7 @@ def _classic_color(value: str) -> str:
     return value
 
 
-def _required_str(payload: dict[str, Any], key: str) -> str:
-    value = payload.get(key)
-    if not isinstance(value, str) or not value:
-        raise ProtocolError("missing_field", f"Missing required field: {key}")
+def _scoring(value: str) -> str:
+    if value not in SCORING_MODES:
+        raise ProtocolError("invalid_scoring", "Scoring must be basic or advanced")
     return value
-
-
-def _require_keys(payload: dict[str, Any], keys: set[str]) -> None:
-    missing = keys.difference(payload)
-    if missing:
-        raise ProtocolError("invalid_players", f"Missing player assignments: {sorted(missing)}")
-
-    invalid_colors = set(payload).intersection({"black", "white"})
-    if invalid_colors:
-        raise ProtocolError("invalid_classic_color", "Duo colors are not valid in Classic mode")

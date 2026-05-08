@@ -114,6 +114,63 @@ async def test_service_reports_missing_game() -> None:
 
 
 @pytest.mark.asyncio
+async def test_service_missing_player_slot_raises_invalid_players() -> None:
+    service = GameService(InMemoryGameRepository(), FakeClassicEngine())
+
+    with pytest.raises(ProtocolError) as captured:
+        await service.create_game(
+            {
+                "game_id": "game-incomplete",
+                "mode": "four_player",
+                "players": {"blue": "p1", "yellow": "p2", "red": "p3"},
+            }
+        )
+
+    assert captured.value.code == "invalid_players"
+
+
+@pytest.mark.asyncio
+async def test_service_missing_required_field_raises_missing_field() -> None:
+    service = GameService(InMemoryGameRepository(), FakeClassicEngine())
+    await service.create_game(
+        {
+            "game_id": "game-missing",
+            "mode": "two_player",
+            "players": {"blue_red": "p1", "yellow_green": "p2"},
+        }
+    )
+
+    with pytest.raises(ProtocolError) as captured:
+        await service.place_move(
+            {
+                "game_id": "game-missing",
+                "command_id": "cmd",
+                "player_id": "p1",
+                "color": "blue",
+            }
+        )
+
+    assert captured.value.code == "missing_field"
+
+
+@pytest.mark.asyncio
+async def test_service_invalid_scoring_raises_invalid_scoring() -> None:
+    service = GameService(InMemoryGameRepository(), FakeClassicEngine())
+
+    with pytest.raises(ProtocolError) as captured:
+        await service.create_game(
+            {
+                "game_id": "game-bad-scoring",
+                "mode": "two_player",
+                "scoring": "weird",
+                "players": {"blue_red": "p1", "yellow_green": "p2"},
+            }
+        )
+
+    assert captured.value.code == "invalid_scoring"
+
+
+@pytest.mark.asyncio
 async def test_service_validates_four_player_start_color() -> None:
     service = GameService(InMemoryGameRepository(), FakeClassicEngine())
 
