@@ -291,6 +291,10 @@ All share the same `state` payload (the current state view). The
     "turn_order": ["red", "green", "blue", "yellow"],
     "occupied_count": 12,
     "board_counts": [{"color": "blue", "count": 3}, ...],
+    "board": [                       // board_size × board_size grid
+      [null, null, "blue", ...],     // null = empty cell, otherwise color value
+      ...
+    ],
     "shared_color_turn_index": 1     // only present in three_player
   },
   "response": "move applied"         // move_applied/pass_applied/game_finished only
