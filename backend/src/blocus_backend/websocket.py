@@ -84,7 +84,11 @@ class ConnectionManager:
         for websocket in list(self._subscriptions.get(game_id, set())):
             try:
                 await websocket.send_json(event)
-            except RuntimeError:
+            except (WebSocketDisconnect, ConnectionError, OSError, RuntimeError) as error:
+                # One half-closed/broken socket must not abort the broadcast
+                # for the other subscribers. CancelledError is deliberately
+                # NOT caught — it would suppress task cancellation.
+                log.debug("dropping disconnected websocket: %s", error)
                 dead.append(websocket)
         for websocket in dead:
             await self.disconnect(websocket)

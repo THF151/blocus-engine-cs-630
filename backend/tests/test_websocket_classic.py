@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
 from conftest import FakeClassicEngine, FakeState
 from fastapi.testclient import TestClient
 
@@ -562,6 +563,90 @@ def test_subscribe_without_player_id_is_spectator_mode() -> None:
 
     assert event["type"] == "error"
     assert event["code"] == "not_seated"
+
+
+def test_cors_default_allows_localhost_origin() -> None:
+    """OPTIONS preflight is handled by CORSMiddleware itself, so the test
+    doesn't depend on the `/health` endpoint being callable on the fake."""
+    client = make_client()
+
+    response = client.options(
+        "/health",
+        headers={
+            "Origin": "http://localhost:3000",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers.get("access-control-allow-origin") == "http://localhost:3000"
+
+
+def test_cors_default_rejects_external_origin() -> None:
+    """Without BLOCUS_CORS_ORIGINS set, only localhost variants are allowed."""
+    client = make_client()
+
+    response = client.options(
+        "/health",
+        headers={
+            "Origin": "https://attacker.example",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+
+    # Starlette returns 400 and omits the header when the origin fails the policy.
+    assert "access-control-allow-origin" not in response.headers
+
+
+def test_cors_explicit_origins_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(
+        "BLOCUS_CORS_ORIGINS",
+        "https://blocus.example, https://other.example",
+    )
+    client = make_client()
+
+    response = client.options(
+        "/health",
+        headers={
+            "Origin": "https://blocus.example",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers.get("access-control-allow-origin") == "https://blocus.example"
+
+
+@pytest.mark.asyncio
+async def test_send_local_continues_after_one_websocket_raises() -> None:
+    """A broken send on one subscriber must not stop the broadcast loop."""
+    from blocus_backend.event_bus import InMemoryGameEventBus
+    from blocus_backend.websocket import ConnectionManager
+
+    class _BrokenWS:
+        async def send_json(self, _event: dict[str, Any]) -> None:
+            raise BrokenPipeError("connection reset")
+
+    class _WorkingWS:
+        def __init__(self) -> None:
+            self.received: list[dict[str, Any]] = []
+
+        async def send_json(self, event: dict[str, Any]) -> None:
+            self.received.append(event)
+
+    manager = ConnectionManager(InMemoryGameEventBus())
+    broken = _BrokenWS()
+    working = _WorkingWS()
+    # Inject both sockets as subscribers of the same game without going
+    # through the (async) subscribe path; we only want to exercise the
+    # broadcast loop here.
+    manager._subscriptions["game-broken"] = {broken, working}  # type: ignore[dict-item, assignment]
+
+    await manager._send_local("game-broken", {"type": "move_applied"})
+
+    assert working.received == [{"type": "move_applied"}]
+    # Broken socket was disconnected (removed from subscriptions)
+    assert broken not in manager._subscriptions.get("game-broken", set())
 
 
 def test_seat_takeover_evicts_existing_connection() -> None:
