@@ -21,8 +21,12 @@ def create_app(
     engine_adapter = engine or ClassicEngineAdapter()
     game_repository: GameRepository = repository or RedisGameRepository()
     game_event_bus: GameEventBus = event_bus or RedisGameEventBus()
-    service = GameService(game_repository, engine_adapter)
     manager = ConnectionManager(game_event_bus)
+    service = GameService(
+        game_repository,
+        engine_adapter,
+        seat_binding_check=manager.is_seat_bound,
+    )
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:

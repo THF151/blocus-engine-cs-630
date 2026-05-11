@@ -85,3 +85,8 @@ class AttachAiRequest(BaseModel):
     game_id: str = Field(min_length=1)
     player_id: str = Field(min_length=1)
     color: str = Field(min_length=1)
+
+
+class SubscribeGameRequest(BaseModel):
+    game_id: str = Field(min_length=1)
+    player_id: str | None = None

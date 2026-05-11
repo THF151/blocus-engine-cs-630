@@ -289,3 +289,97 @@ async def test_service_validates_four_player_start_color() -> None:
         )
 
     assert captured.value.code == "invalid_classic_color"
+
+
+@pytest.mark.asyncio
+async def test_advance_ai_turns_yields_when_human_seat_is_bound() -> None:
+    """Binding ≻ AI: a bound human seat suspends the AI loop for that color."""
+    bound_seats: set[tuple[str, str]] = set()
+    service = GameService(
+        InMemoryGameRepository(),
+        FakeClassicEngine(),
+        seat_binding_check=lambda g, p: (g, p) in bound_seats,
+    )
+    await service.create_game(
+        {
+            "game_id": "game-bind-yield",
+            "mode": "two_player",
+            "players": {"blue_red": "p1", "yellow_green": "p2"},
+        }
+    )
+    await service.attach_ai({"game_id": "game-bind-yield", "player_id": "p1", "color": "blue"})
+    bound_seats.add(("game-bind-yield", "p1"))
+
+    events = await service.advance_ai_turns("game-bind-yield")
+
+    assert events == []
+
+
+@pytest.mark.asyncio
+async def test_service_maps_rule_violation_to_protocol_error() -> None:
+    pytest.importorskip("blocus_engine")
+    import blocus_engine as be
+
+    class _RuleViolatingEngine(FakeClassicEngine):
+        def place_move(self, _state: Any, _payload: dict[str, Any]) -> Any:
+            raise be.RuleViolationError("piece overlaps existing placement")
+
+    service = GameService(InMemoryGameRepository(), _RuleViolatingEngine())
+    await service.create_game(
+        {
+            "game_id": "game-rule",
+            "mode": "two_player",
+            "players": {"blue_red": "p1", "yellow_green": "p2"},
+        }
+    )
+
+    with pytest.raises(ProtocolError) as captured:
+        await service.place_move(
+            {
+                "game_id": "game-rule",
+                "command_id": "cmd",
+                "player_id": "p1",
+                "color": "blue",
+                "piece_id": 0,
+                "orientation_id": 0,
+                "row": 0,
+                "col": 0,
+            }
+        )
+
+    assert captured.value.code == "rule_violation"
+
+
+@pytest.mark.asyncio
+async def test_service_maps_input_error_to_invalid_command() -> None:
+    pytest.importorskip("blocus_engine")
+    import blocus_engine as be
+
+    class _BadInputEngine(FakeClassicEngine):
+        def place_move(self, _state: Any, _payload: dict[str, Any]) -> Any:
+            raise be.InputError("piece_id 999 is unknown")
+
+    service = GameService(InMemoryGameRepository(), _BadInputEngine())
+    await service.create_game(
+        {
+            "game_id": "game-input",
+            "mode": "two_player",
+            "players": {"blue_red": "p1", "yellow_green": "p2"},
+        }
+    )
+
+    with pytest.raises(ProtocolError) as captured:
+        await service.place_move(
+            {
+                "game_id": "game-input",
+                "command_id": "cmd",
+                "player_id": "p1",
+                "color": "blue",
+                "piece_id": 999,
+                "orientation_id": 0,
+                "row": 0,
+                "col": 0,
+            }
+        )
+
+    assert captured.value.code == "invalid_command"

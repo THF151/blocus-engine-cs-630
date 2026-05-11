@@ -112,6 +112,13 @@ def test_move_application_is_broadcast_to_subscribed_clients() -> None:
             }
         )
         owner.receive_json()
+        owner.send_json(
+            {
+                "action": "subscribe_game",
+                "payload": {"game_id": "game-broadcast", "player_id": "player-one"},
+            }
+        )
+        assert owner.receive_json()["type"] == "state_snapshot"
 
         with client.websocket_connect("/ws") as subscriber:
             subscriber.send_json(
@@ -170,6 +177,13 @@ def test_move_application_is_broadcast_across_connection_managers() -> None:
             }
         )
         owner.receive_json()
+        owner.send_json(
+            {
+                "action": "subscribe_game",
+                "payload": {"game_id": "game-cross-worker", "player_id": "player-one"},
+            }
+        )
+        assert owner.receive_json()["type"] == "state_snapshot"
 
         with subscriber_client.websocket_connect("/ws") as subscriber:
             subscriber.send_json(
@@ -404,3 +418,172 @@ def test_websocket_can_request_state_legal_moves_and_score() -> None:
     assert moves["type"] == "legal_moves"
     assert moves["moves"][0]["piece_id"] == 0
     assert score["type"] == "score_report"
+
+
+def _create_two_player_game(ws: Any, game_id: str = "game-bind") -> None:
+    ws.send_json(
+        {
+            "action": "create_game",
+            "payload": {
+                "game_id": game_id,
+                "mode": "two_player",
+                "players": {"blue_red": "player-one", "yellow_green": "player-two"},
+            },
+        }
+    )
+    ws.receive_json()
+
+
+def test_place_move_without_seat_claim_returns_not_seated() -> None:
+    client = make_client()
+
+    with client.websocket_connect("/ws") as ws:
+        _create_two_player_game(ws, "game-no-seat")
+
+        ws.send_json(
+            {
+                "action": "place_move",
+                "payload": {
+                    "game_id": "game-no-seat",
+                    "command_id": "cmd-1",
+                    "player_id": "player-one",
+                    "color": "blue",
+                    "piece_id": 0,
+                    "orientation_id": 0,
+                    "row": 0,
+                    "col": 0,
+                },
+            }
+        )
+        event = ws.receive_json()
+
+    assert event["type"] == "error"
+    assert event["code"] == "not_seated"
+
+
+def test_place_move_with_mismatched_player_id_returns_player_mismatch() -> None:
+    client = make_client()
+
+    with client.websocket_connect("/ws") as ws:
+        _create_two_player_game(ws, "game-mismatch")
+        ws.send_json(
+            {
+                "action": "subscribe_game",
+                "payload": {"game_id": "game-mismatch", "player_id": "player-one"},
+            }
+        )
+        assert ws.receive_json()["type"] == "state_snapshot"
+
+        ws.send_json(
+            {
+                "action": "place_move",
+                "payload": {
+                    "game_id": "game-mismatch",
+                    "command_id": "cmd-1",
+                    "player_id": "player-two",
+                    "color": "yellow",
+                    "piece_id": 0,
+                    "orientation_id": 0,
+                    "row": 0,
+                    "col": 0,
+                },
+            }
+        )
+        event = ws.receive_json()
+
+    assert event["type"] == "error"
+    assert event["code"] == "player_mismatch"
+
+
+def test_subscribe_without_player_id_is_spectator_mode() -> None:
+    """Spectator can receive state and legal_moves but not place moves."""
+    client = make_client()
+
+    with client.websocket_connect("/ws") as ws:
+        _create_two_player_game(ws, "game-spectator")
+        ws.send_json(
+            {
+                "action": "subscribe_game",
+                "payload": {"game_id": "game-spectator"},
+            }
+        )
+        assert ws.receive_json()["type"] == "state_snapshot"
+
+        ws.send_json(
+            {
+                "action": "request_legal_moves",
+                "payload": {
+                    "game_id": "game-spectator",
+                    "player_id": "player-one",
+                    "color": "blue",
+                },
+            }
+        )
+        assert ws.receive_json()["type"] == "legal_moves"
+
+        ws.send_json(
+            {
+                "action": "place_move",
+                "payload": {
+                    "game_id": "game-spectator",
+                    "command_id": "cmd-1",
+                    "player_id": "player-one",
+                    "color": "blue",
+                    "piece_id": 0,
+                    "orientation_id": 0,
+                    "row": 0,
+                    "col": 0,
+                },
+            }
+        )
+        event = ws.receive_json()
+
+    assert event["type"] == "error"
+    assert event["code"] == "not_seated"
+
+
+def test_seat_takeover_evicts_existing_connection() -> None:
+    client = make_client()
+
+    with client.websocket_connect("/ws") as first:
+        _create_two_player_game(first, "game-takeover")
+        first.send_json(
+            {
+                "action": "subscribe_game",
+                "payload": {"game_id": "game-takeover", "player_id": "player-one"},
+            }
+        )
+        assert first.receive_json()["type"] == "state_snapshot"
+
+        with client.websocket_connect("/ws") as second:
+            second.send_json(
+                {
+                    "action": "subscribe_game",
+                    "payload": {"game_id": "game-takeover", "player_id": "player-one"},
+                }
+            )
+            kicked = first.receive_json()
+            second_snapshot = second.receive_json()
+
+            assert kicked["type"] == "kicked"
+            assert kicked["reason"] == "seat_taken_by_reconnect"
+            assert second_snapshot["type"] == "state_snapshot"
+
+            second.send_json(
+                {
+                    "action": "place_move",
+                    "payload": {
+                        "game_id": "game-takeover",
+                        "command_id": "cmd-1",
+                        "player_id": "player-one",
+                        "color": "blue",
+                        "piece_id": 0,
+                        "orientation_id": 0,
+                        "row": 0,
+                        "col": 0,
+                    },
+                }
+            )
+            event = second.receive_json()
+
+    assert event["type"] == "move_applied"
