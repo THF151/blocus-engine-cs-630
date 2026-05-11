@@ -93,8 +93,18 @@ class ClassicEngineAdapter:
                 scoring=scoring,
                 turn_order=[_color(be, color) for color in payload["turn_order"]],
             )
+        elif mode == "duo":
+            players = payload["players"]
+            turn_order = payload["turn_order"]
+            config = be.GameConfig.duo(
+                game_id=payload["game_id"],
+                black_player=players["black"],
+                white_player=players["white"],
+                scoring=scoring,
+                first_color=_color(be, turn_order[0]),
+            )
         else:
-            raise ValueError(f"Unsupported classic mode: {mode}")
+            raise ValueError(f"Unsupported mode: {mode}")
 
         return self._client().initialize_game(config)
 
@@ -174,6 +184,8 @@ def _color(be: Any, value: str) -> Any:
         "yellow": be.PlayerColor.YELLOW,
         "red": be.PlayerColor.RED,
         "green": be.PlayerColor.GREEN,
+        "black": be.PlayerColor.BLACK,
+        "white": be.PlayerColor.WHITE,
     }
     return colors[value]
 

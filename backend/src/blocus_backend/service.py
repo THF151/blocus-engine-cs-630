@@ -18,6 +18,7 @@ from blocus_backend.repository import (
 )
 from blocus_backend.schemas import (
     AttachAiRequest,
+    DuoCreateGameRequest,
     FourPlayerCreate,
     LegalMovesRequest,
     PassMoveRequest,
@@ -29,6 +30,7 @@ from blocus_backend.schemas import (
 log = logging.getLogger(__name__)
 
 CLASSIC_COLORS = ["blue", "yellow", "red", "green"]
+DUO_COLORS = ["black", "white"]
 CLASSIC_MODES = {"two_player", "three_player", "four_player"}
 SCORING_MODES = {"basic", "advanced"}
 MAX_AI_TURNS = 10_000
@@ -95,8 +97,10 @@ class GameService:
             normalized = _normalize_three_player(_parse(payload, ThreePlayerCreate))
         elif mode == "four_player":
             normalized = _normalize_four_player(_parse(payload, FourPlayerCreate))
+        elif mode == "duo":
+            normalized = _normalize_duo(_parse(payload, DuoCreateGameRequest))
         else:
-            raise ProtocolError("invalid_classic_mode", "Only Classic modes are supported")
+            raise ProtocolError("invalid_mode", f"Unsupported mode: {mode!r}")
 
         with _map_engine_errors():
             state = self._engine.create_game(normalized)
@@ -121,8 +125,8 @@ class GameService:
 
     async def legal_moves(self, payload: dict[str, Any]) -> dict[str, Any]:
         request = _parse(payload, LegalMovesRequest)
-        color = _classic_color(request.color)
         record = await self._record(request.game_id)
+        color = _color_for_mode(request.color, _mode_of(record))
         with _map_engine_errors():
             state = self._engine.deserialize_state(record.state_json)
             moves = self._engine.legal_moves(state, request.player_id, color)
@@ -136,8 +140,8 @@ class GameService:
 
     async def place_move(self, payload: dict[str, Any]) -> dict[str, Any]:
         request = _parse(payload, PlaceMoveRequest)
-        color = _classic_color(request.color)
         record = await self._record(request.game_id)
+        color = _color_for_mode(request.color, _mode_of(record))
         with _map_engine_errors():
             state = self._engine.deserialize_state(record.state_json)
             command_payload = {**request.model_dump(), "color": color}
@@ -149,8 +153,8 @@ class GameService:
 
     async def pass_move(self, payload: dict[str, Any]) -> dict[str, Any]:
         request = _parse(payload, PassMoveRequest)
-        color = _classic_color(request.color)
         record = await self._record(request.game_id)
+        color = _color_for_mode(request.color, _mode_of(record))
         with _map_engine_errors():
             state = self._engine.deserialize_state(record.state_json)
             command_payload = {**request.model_dump(), "color": color}
@@ -173,9 +177,8 @@ class GameService:
 
     async def attach_ai(self, payload: dict[str, Any]) -> dict[str, Any]:
         request = _parse(payload, AttachAiRequest)
-        color = _classic_color(request.color)
-
         record = await self._record(request.game_id)
+        color = _color_for_mode(request.color, _mode_of(record))
         metadata = dict(record.metadata)
         ai_seats = list(metadata.get("ai_seats", []))
         seat = {"player_id": request.player_id, "color": color}
@@ -287,9 +290,16 @@ def _validation_error_to_protocol_error(error: ValidationError) -> ProtocolError
 
     if loc and loc[0] == "players":
         return ProtocolError("invalid_players", f"Invalid players: {msg}")
+    if loc and loc[0] == "scoring":
+        return ProtocolError("invalid_scoring", f"Invalid scoring: {msg}")
 
     field = ".".join(str(x) for x in loc) if loc else "(unknown)"
     return ProtocolError("missing_field", f"Missing or invalid field: {field}")
+
+
+def _mode_of(record: GameRecord) -> str:
+    mode = record.metadata.get("mode")
+    return mode if isinstance(mode, str) else ""
 
 
 def _ai_seat_for_color(
@@ -393,13 +403,28 @@ def _normalize_three_player(request: ThreePlayerCreate) -> dict[str, Any]:
 
 
 def _normalize_four_player(request: FourPlayerCreate) -> dict[str, Any]:
-    first_color = _classic_color(request.first_color)
+    first_color = _color_for_mode(request.first_color, "four_player")
     return {
         "game_id": request.game_id or str(uuid4()),
         "mode": "four_player",
         "scoring": _scoring(request.scoring),
         "players": request.players.model_dump(),
-        "turn_order": _rotated_turn_order(first_color),
+        "turn_order": _rotated_turn_order(first_color, CLASSIC_COLORS),
+    }
+
+
+def _normalize_duo(request: DuoCreateGameRequest) -> dict[str, Any]:
+    first_color = _color_for_mode(request.first_color, "duo")
+    # Backstop: schema-level Literal["advanced"] should already prevent any
+    # other value, but enforce here too for direct-construction code paths.
+    if request.scoring != "advanced":
+        raise ProtocolError("invalid_scoring", "Duo requires advanced scoring")
+    return {
+        "game_id": request.game_id or str(uuid4()),
+        "mode": "duo",
+        "scoring": "advanced",
+        "players": request.players.model_dump(),
+        "turn_order": _rotated_turn_order(first_color, DUO_COLORS),
     }
 
 
@@ -417,14 +442,21 @@ def _event(event_type: str, game_id: str, state: dict[str, Any]) -> dict[str, An
     return {"type": event_type, "game_id": game_id, "state": state}
 
 
-def _rotated_turn_order(first_color: str) -> list[str]:
-    start = CLASSIC_COLORS.index(first_color)
-    return CLASSIC_COLORS[start:] + CLASSIC_COLORS[:start]
+def _rotated_turn_order(first_color: str, color_cycle: list[str]) -> list[str]:
+    start = color_cycle.index(first_color)
+    return color_cycle[start:] + color_cycle[:start]
 
 
-def _classic_color(value: str) -> str:
+def _color_for_mode(value: str, mode: str) -> str:
+    if mode == "duo":
+        if value not in DUO_COLORS:
+            raise ProtocolError("invalid_duo_color", "Duo color must be black or white")
+        return value
     if value not in CLASSIC_COLORS:
-        raise ProtocolError("invalid_classic_color", "Only Classic colors are supported")
+        raise ProtocolError(
+            "invalid_classic_color",
+            "Classic color must be blue, yellow, red, or green",
+        )
     return value
 
 

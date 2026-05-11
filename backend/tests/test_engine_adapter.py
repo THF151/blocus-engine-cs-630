@@ -137,10 +137,51 @@ def test_engine_adapter_rejects_unknown_module_when_binding_missing(
     assert adapter.engine_health() is False
 
 
+def test_engine_adapter_creates_duo_game_with_14x14_board() -> None:
+    adapter = ClassicEngineAdapter()
+
+    state = adapter.create_game(
+        {
+            "game_id": GAME_ID,
+            "mode": "duo",
+            "scoring": "advanced",
+            "players": {"black": PLAYER_ONE, "white": PLAYER_TWO},
+            "turn_order": ["black", "white"],
+        }
+    )
+
+    view = adapter.state_view(state)
+
+    assert view["mode"] == "duo"
+    assert view["board_size"] == 14
+    assert view["scoring"] == "advanced"
+    assert view["current_color"] == "black"
+    assert view["turn_order"] == ["black", "white"]
+
+
+def test_engine_adapter_creates_duo_game_starting_with_white() -> None:
+    adapter = ClassicEngineAdapter()
+
+    state = adapter.create_game(
+        {
+            "game_id": GAME_ID,
+            "mode": "duo",
+            "scoring": "advanced",
+            "players": {"black": PLAYER_ONE, "white": PLAYER_TWO},
+            "turn_order": ["white", "black"],
+        }
+    )
+
+    view = adapter.state_view(state)
+
+    assert view["current_color"] == "white"
+    assert view["turn_order"] == ["white", "black"]
+
+
 def test_engine_adapter_rejects_unknown_mode() -> None:
     adapter = ClassicEngineAdapter()
 
-    with pytest.raises(ValueError, match="Unsupported classic mode"):
+    with pytest.raises(ValueError, match="Unsupported mode"):
         adapter.create_game(
             {
                 "game_id": GAME_ID,

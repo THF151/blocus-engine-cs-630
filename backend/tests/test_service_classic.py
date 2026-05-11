@@ -292,6 +292,73 @@ async def test_service_validates_four_player_start_color() -> None:
 
 
 @pytest.mark.asyncio
+async def test_service_creates_duo_game_with_default_turn_order() -> None:
+    service = GameService(InMemoryGameRepository(), FakeClassicEngine())
+
+    event = await service.create_game(
+        {
+            "game_id": "game-duo",
+            "mode": "duo",
+            "players": {"black": "p1", "white": "p2"},
+        }
+    )
+
+    assert event["type"] == "game_created"
+    assert event["state"]["mode"] == "duo"
+    assert event["state"]["turn_order"] == ["black", "white"]
+
+
+@pytest.mark.asyncio
+async def test_service_creates_duo_game_with_first_color_white() -> None:
+    service = GameService(InMemoryGameRepository(), FakeClassicEngine())
+
+    event = await service.create_game(
+        {
+            "game_id": "game-duo-white",
+            "mode": "duo",
+            "first_color": "white",
+            "players": {"black": "p1", "white": "p2"},
+        }
+    )
+
+    assert event["state"]["turn_order"] == ["white", "black"]
+
+
+@pytest.mark.asyncio
+async def test_service_rejects_duo_with_basic_scoring() -> None:
+    service = GameService(InMemoryGameRepository(), FakeClassicEngine())
+
+    with pytest.raises(ProtocolError) as captured:
+        await service.create_game(
+            {
+                "game_id": "game-duo-bad-scoring",
+                "mode": "duo",
+                "scoring": "basic",
+                "players": {"black": "p1", "white": "p2"},
+            }
+        )
+
+    assert captured.value.code == "invalid_scoring"
+
+
+@pytest.mark.asyncio
+async def test_service_rejects_duo_with_classic_first_color() -> None:
+    service = GameService(InMemoryGameRepository(), FakeClassicEngine())
+
+    with pytest.raises(ProtocolError) as captured:
+        await service.create_game(
+            {
+                "game_id": "game-duo-bad-color",
+                "mode": "duo",
+                "first_color": "blue",
+                "players": {"black": "p1", "white": "p2"},
+            }
+        )
+
+    assert captured.value.code == "invalid_duo_color"
+
+
+@pytest.mark.asyncio
 async def test_advance_ai_turns_yields_when_human_seat_is_bound() -> None:
     """Binding ≻ AI: a bound human seat suspends the AI loop for that color."""
     bound_seats: set[tuple[str, str]] = set()

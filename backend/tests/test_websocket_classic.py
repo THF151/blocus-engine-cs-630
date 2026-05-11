@@ -72,7 +72,7 @@ def test_websocket_creates_classic_four_player_game_with_rotated_turn_order() ->
     assert event["state"]["turn_order"] == ["red", "green", "blue", "yellow"]
 
 
-def test_websocket_rejects_duo_mode_at_protocol_boundary() -> None:
+def test_websocket_creates_duo_game() -> None:
     client = make_client()
 
     with client.websocket_connect("/ws") as ws:
@@ -89,8 +89,30 @@ def test_websocket_rejects_duo_mode_at_protocol_boundary() -> None:
 
         event = ws.receive_json()
 
+    assert event["type"] == "game_created"
+    assert event["state"]["mode"] == "duo"
+    assert event["state"]["turn_order"] == ["black", "white"]
+
+
+def test_websocket_rejects_unknown_mode() -> None:
+    client = make_client()
+
+    with client.websocket_connect("/ws") as ws:
+        ws.send_json(
+            {
+                "action": "create_game",
+                "payload": {
+                    "game_id": "game-bad",
+                    "mode": "five_player",
+                    "players": {"blue": "p1"},
+                },
+            }
+        )
+
+        event = ws.receive_json()
+
     assert event["type"] == "error"
-    assert event["code"] == "invalid_classic_mode"
+    assert event["code"] == "invalid_mode"
 
 
 def test_move_application_is_broadcast_to_subscribed_clients() -> None:
