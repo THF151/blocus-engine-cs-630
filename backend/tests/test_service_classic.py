@@ -1,10 +1,33 @@
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 from conftest import FakeClassicEngine
 
-from blocus_backend.repository import InMemoryGameRepository
+from blocus_backend.repository import InMemoryGameRepository, OptimisticLockError
 from blocus_backend.service import GameService, ProtocolError, _ai_seat_for_color
+
+
+class _RacingRepository(InMemoryGameRepository):
+    """Injects an OptimisticLockError on the next save_game call."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.fail_next_save: bool = False
+
+    async def save_game(
+        self,
+        game_id: str,
+        state_json: str,
+        metadata: dict[str, Any],
+        *,
+        expected_version: int | None,
+    ) -> None:
+        if self.fail_next_save:
+            self.fail_next_save = False
+            raise OptimisticLockError(game_id, expected_version)
+        await super().save_game(game_id, state_json, metadata, expected_version=expected_version)
 
 
 def test_ai_seat_for_three_player_shared_green_uses_scheduled_player() -> None:
@@ -168,6 +191,82 @@ async def test_service_invalid_scoring_raises_invalid_scoring() -> None:
         )
 
     assert captured.value.code == "invalid_scoring"
+
+
+@pytest.mark.asyncio
+async def test_service_place_move_raises_conflict_on_optimistic_lock() -> None:
+    repo = _RacingRepository()
+    service = GameService(repo, FakeClassicEngine())
+    await service.create_game(
+        {
+            "game_id": "game-conflict",
+            "mode": "two_player",
+            "players": {"blue_red": "p1", "yellow_green": "p2"},
+        }
+    )
+    repo.fail_next_save = True
+
+    with pytest.raises(ProtocolError) as captured:
+        await service.place_move(
+            {
+                "game_id": "game-conflict",
+                "command_id": "cmd",
+                "player_id": "p1",
+                "color": "blue",
+                "piece_id": 0,
+                "orientation_id": 0,
+                "row": 0,
+                "col": 0,
+            }
+        )
+
+    assert captured.value.code == "conflict"
+
+
+@pytest.mark.asyncio
+async def test_service_attach_ai_raises_conflict_on_optimistic_lock() -> None:
+    repo = _RacingRepository()
+    service = GameService(repo, FakeClassicEngine())
+    await service.create_game(
+        {
+            "game_id": "game-attach-conflict",
+            "mode": "two_player",
+            "players": {"blue_red": "p1", "yellow_green": "p2"},
+        }
+    )
+    repo.fail_next_save = True
+
+    with pytest.raises(ProtocolError) as captured:
+        await service.attach_ai(
+            {
+                "game_id": "game-attach-conflict",
+                "player_id": "p1",
+                "color": "blue",
+            }
+        )
+
+    assert captured.value.code == "conflict"
+
+
+@pytest.mark.asyncio
+async def test_advance_ai_turns_continues_after_conflict() -> None:
+    repo = _RacingRepository()
+    service = GameService(repo, FakeClassicEngine())
+    await service.create_game(
+        {
+            "game_id": "game-ai-conflict",
+            "mode": "two_player",
+            "players": {"blue_red": "p1", "yellow_green": "p2"},
+        }
+    )
+    await service.attach_ai({"game_id": "game-ai-conflict", "player_id": "p1", "color": "blue"})
+
+    repo.fail_next_save = True
+
+    events = await service.advance_ai_turns("game-ai-conflict")
+
+    assert len(events) == 1
+    assert events[0]["type"] == "move_applied"
 
 
 @pytest.mark.asyncio

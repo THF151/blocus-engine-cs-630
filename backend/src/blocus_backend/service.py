@@ -7,7 +7,12 @@ from uuid import uuid4
 from pydantic import BaseModel, ValidationError
 
 from blocus_backend.engine_adapter import ApplyResult
-from blocus_backend.repository import GameNotFoundError, GameRecord, GameRepository
+from blocus_backend.repository import (
+    GameNotFoundError,
+    GameRecord,
+    GameRepository,
+    OptimisticLockError,
+)
 from blocus_backend.schemas import (
     AttachAiRequest,
     FourPlayerCreate,
@@ -53,6 +58,7 @@ class GameService:
             normalized["game_id"],
             self._engine.serialize_state(state),
             metadata,
+            expected_version=None,
         )
         return _event("game_created", normalized["game_id"], self._engine.state_view(state))
 
@@ -81,7 +87,10 @@ class GameService:
         state = self._engine.deserialize_state(record.state_json)
         command_payload = {**request.model_dump(), "color": color}
         result = self._engine.place_move(state, command_payload)
-        return await self._persist_apply_result(request.game_id, record, result)
+        try:
+            return await self._persist_apply_result(request.game_id, record, result)
+        except OptimisticLockError as error:
+            raise ProtocolError("conflict", "Game state changed concurrently — retry") from error
 
     async def pass_move(self, payload: dict[str, Any]) -> dict[str, Any]:
         request = _parse(payload, PassMoveRequest)
@@ -90,7 +99,10 @@ class GameService:
         state = self._engine.deserialize_state(record.state_json)
         command_payload = {**request.model_dump(), "color": color}
         result = self._engine.pass_move(state, command_payload)
-        return await self._persist_apply_result(request.game_id, record, result)
+        try:
+            return await self._persist_apply_result(request.game_id, record, result)
+        except OptimisticLockError as error:
+            raise ProtocolError("conflict", "Game state changed concurrently — retry") from error
 
     async def score(self, game_id: str) -> dict[str, Any]:
         record = await self._record(game_id)
@@ -112,7 +124,15 @@ class GameService:
         if seat not in ai_seats:
             ai_seats.append(seat)
         metadata["ai_seats"] = ai_seats
-        await self._repository.update_metadata(request.game_id, metadata)
+        try:
+            await self._repository.save_game(
+                request.game_id,
+                record.state_json,
+                metadata,
+                expected_version=record.version,
+            )
+        except OptimisticLockError as error:
+            raise ProtocolError("conflict", "Game state changed concurrently — retry") from error
 
         state = self._engine.deserialize_state(record.state_json)
         return _event("game_joined", request.game_id, self._engine.state_view(state))
@@ -145,7 +165,12 @@ class GameService:
             else:
                 result = self._engine.pass_move(state, command_payload)
 
-            event = await self._persist_apply_result(game_id, record, result)
+            try:
+                event = await self._persist_apply_result(game_id, record, result)
+            except OptimisticLockError:
+                # Another writer raced us; loop re-reads the latest state and
+                # the AI re-derives its move from there.
+                continue
             events.append(event)
             if event["type"] == "game_finished":
                 return events
@@ -165,7 +190,12 @@ class GameService:
         result: ApplyResult,
     ) -> dict[str, Any]:
         state_json = self._engine.serialize_state(result.next_state)
-        await self._repository.save_game(game_id, state_json, record.metadata)
+        await self._repository.save_game(
+            game_id,
+            state_json,
+            record.metadata,
+            expected_version=record.version,
+        )
         state_view = self._engine.state_view(result.next_state)
         event = _event(result.event_type, game_id, state_view)
         event["response"] = result.response
