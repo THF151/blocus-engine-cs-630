@@ -5,8 +5,9 @@
 > event shapes is the Pydantic schemas in `src/blocus_backend/schemas.py`;
 > this document is maintained by hand alongside them.
 
-This document covers the **Classic** modes (`two_player`, `three_player`,
-`four_player`). Duo is documented in a separate section once it lands.
+This document covers the four supported modes: Classic two-, three-, and
+four-player (20×20 board, blue/yellow/red/green) and Duo (14×14 board,
+black/white, advanced-scoring-only).
 
 ---
 
@@ -95,22 +96,29 @@ broadcast to anyone who later subscribes (via `state_snapshot`). The caller
 is **not** auto-bound to a seat; they must follow up with `subscribe_game`
 including a `player_id` to play.
 
-Payload (one of `TwoPlayerCreate` / `ThreePlayerCreate` / `FourPlayerCreate`,
-discriminated by `mode`):
+Payload (one of `TwoPlayerCreate` / `ThreePlayerCreate` / `FourPlayerCreate` /
+`DuoCreateGameRequest`, discriminated by `mode`):
 
 | Field        | Type                              | Required | Notes                                      |
 |--------------|-----------------------------------|----------|--------------------------------------------|
-| `mode`       | `"two_player"` \| `"three_player"` \| `"four_player"` | yes      | Classic mode                               |
+| `mode`       | `"two_player"` \| `"three_player"` \| `"four_player"` \| `"duo"` | yes      |                                            |
 | `game_id`    | string                            | no       | UUID generated if omitted                  |
-| `scoring`    | `"basic"` \| `"advanced"`         | no       | Defaults to `"basic"`                      |
+| `scoring`    | `"basic"` \| `"advanced"`         | no       | Defaults to `"basic"`. For Duo, **must** be `"advanced"` (Literal-constrained; default is `"advanced"`). |
 | `players`    | mode-specific (see below)         | yes      |                                            |
-| `first_color`| `"blue"` \| `"yellow"` \| `"red"` \| `"green"` | only `four_player` | Color whose player starts. Default `"blue"`. |
+| `first_color`| mode-specific (see below)         | no       | Color whose player starts. See per-mode defaults below. |
 
 **Player slot models:**
 
 - `two_player`: `{"blue_red": "<id>", "yellow_green": "<id>"}` — each player controls two colors.
 - `three_player`: `{"blue": "<id>", "yellow": "<id>", "red": "<id>", "shared_green": ["<id>", ...]}` — the green seat rotates through the listed players.
 - `four_player`: `{"blue": "<id>", "yellow": "<id>", "red": "<id>", "green": "<id>"}`.
+- `duo`: `{"black": "<id>", "white": "<id>"}`.
+
+**`first_color` per mode:**
+
+- `four_player`: one of `"blue"` / `"yellow"` / `"red"` / `"green"` (default `"blue"`). Rotates the four-color turn order so the chosen color goes first; the cycle continues clockwise.
+- `duo`: one of `"black"` / `"white"` (default `"black"`). Same rotation logic against the two-color cycle.
+- `two_player` / `three_player`: not configurable; the engine fixes the turn order.
 
 Example:
 
@@ -128,7 +136,7 @@ Example:
 ```
 
 Success event (broadcast): `game_created`.
-Errors: `invalid_classic_mode`, `invalid_classic_color`, `invalid_players`, `invalid_scoring`, `missing_field`.
+Errors: `invalid_mode`, `invalid_classic_color`, `invalid_duo_color`, `invalid_players`, `invalid_scoring`, `missing_field`.
 
 ---
 
@@ -173,7 +181,7 @@ Payload (`LegalMovesRequest`):
 | `color`     | string | yes      |
 
 Success event (unicast): `legal_moves`.
-Errors: `game_not_found`, `invalid_classic_color`, `missing_field`,
+Errors: `game_not_found`, `invalid_classic_color`, `invalid_duo_color`, `missing_field`,
 `invalid_command` (engine rejected the player/color combination).
 
 ---
@@ -201,8 +209,8 @@ move ends the game).
 Side effect: triggers `advance_ai_turns`, which may broadcast additional
 AI-driven `move_applied` / `pass_applied` events.
 Errors: `not_seated`, `player_mismatch`, `game_not_found`,
-`invalid_classic_color`, `missing_field`, `rule_violation`,
-`invalid_command`, `conflict`.
+`invalid_classic_color`, `invalid_duo_color`, `missing_field`,
+`rule_violation`, `invalid_command`, `conflict`.
 
 ---
 
@@ -251,8 +259,8 @@ Payload (`AttachAiRequest`):
 
 Success event (broadcast): `game_joined`, followed by zero or more AI
 `move_applied` / `pass_applied` events if it is now an AI's turn.
-Errors: `game_not_found`, `invalid_classic_color`, `missing_field`,
-`conflict`.
+Errors: `game_not_found`, `invalid_classic_color`, `invalid_duo_color`,
+`missing_field`, `conflict`.
 
 ---
 
@@ -348,9 +356,10 @@ on `code`**, not on message text. See [Error Codes](#error-codes).
 | `unknown_action`           | `action` is not in the action catalog.                                               | Fix `action` value.                                            |
 | `missing_field`            | A required field is missing or has the wrong primitive type.                         | Inspect `message` for the offending field path.                |
 | `invalid_players`          | The `players` block fails structural validation (missing slot, wrong shape).         | Fix the `players` payload to match the mode-specific schema.   |
-| `invalid_classic_mode`     | `mode` is not one of `two_player` / `three_player` / `four_player`.                  | Use a supported mode.                                          |
-| `invalid_classic_color`    | A color string is not `blue` / `yellow` / `red` / `green`.                           | Send a Classic color.                                          |
-| `invalid_scoring`          | `scoring` is not `basic` / `advanced`.                                               | Send a supported scoring mode.                                 |
+| `invalid_mode`             | `mode` is not one of `two_player` / `three_player` / `four_player` / `duo`.          | Use a supported mode.                                          |
+| `invalid_classic_color`    | A color string is not one of the Classic colors (`blue` / `yellow` / `red` / `green`) in a Classic game. | Send a color valid for the game's mode.                        |
+| `invalid_duo_color`        | A color string is not `black` / `white` in a Duo game.                               | Send a color valid for the game's mode.                        |
+| `invalid_scoring`          | `scoring` is not `basic` / `advanced`, or `basic` was sent for a Duo game (Duo is advanced-only). | Send a supported scoring mode.                                 |
 | `game_not_found`           | The `game_id` does not exist in Redis.                                               | Surface to user; offer to recreate or rejoin.                  |
 | `not_seated`               | `place_move` / `pass_move` sent from a connection that hasn't claimed this game's seat. | Send `subscribe_game` with `player_id` first.                |
 | `player_mismatch`          | The bound `player_id` for this connection's seat differs from the move's `player_id`. | Either re-subscribe with the correct `player_id` or stop forging the field. |
