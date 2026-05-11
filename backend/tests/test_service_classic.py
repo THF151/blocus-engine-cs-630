@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import logging
 from typing import Any
 
 import pytest
@@ -356,6 +358,100 @@ async def test_service_rejects_duo_with_classic_first_color() -> None:
         )
 
     assert captured.value.code == "invalid_duo_color"
+
+
+@pytest.mark.asyncio
+async def test_advance_ai_turns_yields_to_event_loop(monkeypatch: pytest.MonkeyPatch) -> None:
+    """asyncio.sleep(0) is awaited at the top of every AI iteration so other
+    coroutines on the same event loop get scheduled between moves."""
+    service = GameService(InMemoryGameRepository(), FakeClassicEngine())
+    await service.create_game(
+        {
+            "game_id": "game-yield",
+            "mode": "two_player",
+            "players": {"blue_red": "p1", "yellow_green": "p2"},
+        }
+    )
+    await service.attach_ai({"game_id": "game-yield", "player_id": "p1", "color": "blue"})
+    await service.attach_ai({"game_id": "game-yield", "player_id": "p2", "color": "yellow"})
+
+    zero_sleeps = 0
+    real_sleep = asyncio.sleep
+
+    async def counting_sleep(delay: float, *args: Any, **kwargs: Any) -> Any:
+        nonlocal zero_sleeps
+        if delay == 0:
+            zero_sleeps += 1
+        return await real_sleep(delay, *args, **kwargs)
+
+    monkeypatch.setattr("blocus_backend.service.asyncio.sleep", counting_sleep)
+
+    events = await service.advance_ai_turns("game-yield")
+
+    # Blue and yellow are AIs; after both move, color advances to red which has
+    # no AI seat → loop exits.
+    assert len(events) == 2
+    assert zero_sleeps >= 2
+
+
+@pytest.mark.asyncio
+async def test_advance_ai_turns_emits_structured_log_per_turn(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    service = GameService(InMemoryGameRepository(), FakeClassicEngine())
+    await service.create_game(
+        {
+            "game_id": "game-log",
+            "mode": "two_player",
+            "players": {"blue_red": "p1", "yellow_green": "p2"},
+        }
+    )
+    await service.attach_ai({"game_id": "game-log", "player_id": "p1", "color": "blue"})
+
+    with caplog.at_level(logging.INFO, logger="blocus_backend.service"):
+        events = await service.advance_ai_turns("game-log")
+
+    ai_turn_records = [r for r in caplog.records if r.message == "ai_turn"]
+    assert len(events) == 1
+    assert len(ai_turn_records) == 1
+    assert ai_turn_records[0].game_id == "game-log"
+    assert ai_turn_records[0].color == "blue"
+    assert ai_turn_records[0].player_id == "p1"
+
+
+@pytest.mark.asyncio
+async def test_advance_ai_turns_reuses_state_avoiding_redis_reread() -> None:
+    """After the first iteration, the cached (record, state) is reused for
+    subsequent iterations; the repository is hit once per advance_ai_turns
+    call rather than once per move."""
+
+    class _CountingRepository(InMemoryGameRepository):
+        def __init__(self) -> None:
+            super().__init__()
+            self.get_game_calls = 0
+
+        async def get_game(self, game_id: str) -> Any:
+            self.get_game_calls += 1
+            return await super().get_game(game_id)
+
+    repo = _CountingRepository()
+    service = GameService(repo, FakeClassicEngine())
+    await service.create_game(
+        {
+            "game_id": "game-reuse",
+            "mode": "two_player",
+            "players": {"blue_red": "p1", "yellow_green": "p2"},
+        }
+    )
+    await service.attach_ai({"game_id": "game-reuse", "player_id": "p1", "color": "blue"})
+    await service.attach_ai({"game_id": "game-reuse", "player_id": "p2", "color": "yellow"})
+    calls_before = repo.get_game_calls
+
+    events = await service.advance_ai_turns("game-reuse")
+
+    assert len(events) == 2
+    # First iteration reads from repo; second iteration uses the cached record.
+    assert repo.get_game_calls - calls_before == 1
 
 
 @pytest.mark.asyncio

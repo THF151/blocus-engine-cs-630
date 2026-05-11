@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from collections.abc import Callable, Iterator
@@ -202,11 +203,26 @@ class GameService:
 
     async def advance_ai_turns(self, game_id: str) -> list[dict[str, Any]]:
         events: list[dict[str, Any]] = []
+        # Reuse the post-apply state across iterations to avoid a Redis
+        # round-trip per AI move. Invalidated to None on CAS conflict so
+        # the next iteration re-reads the authoritative state.
+        cached: tuple[GameRecord, Any] | None = None
 
         for _ in range(MAX_AI_TURNS):
-            record = await self._record(game_id)
+            # Yield to the event loop so concurrent websocket reads on this
+            # connection (and other connections sharing the worker) get
+            # scheduled between AI moves. Without this, a long AI chain
+            # would monopolise the worker until termination.
+            await asyncio.sleep(0)
+
+            if cached is None:
+                record = await self._record(game_id)
+                with _map_engine_errors():
+                    state = self._engine.deserialize_state(record.state_json)
+            else:
+                record, state = cached
+
             with _map_engine_errors():
-                state = self._engine.deserialize_state(record.state_json)
                 view = self._engine.state_view(state)
             if view["status"] == "finished":
                 return events
@@ -220,6 +236,16 @@ class GameService:
             # sessions — see PROTOCOL.md.
             if self._is_seat_bound(game_id, seat["player_id"]):
                 return events
+
+            log.info(
+                "ai_turn",
+                extra={
+                    "game_id": game_id,
+                    "color": color,
+                    "player_id": seat["player_id"],
+                    "version": record.version,
+                },
+            )
 
             command_payload = {
                 "game_id": game_id,
@@ -236,14 +262,17 @@ class GameService:
                     result = self._engine.pass_move(state, command_payload)
 
             try:
-                event = await self._persist_apply_result(game_id, record, result)
+                event, next_record = await self._persist_and_build_event(game_id, record, result)
             except OptimisticLockError:
-                # Another writer raced us; loop re-reads the latest state and
-                # the AI re-derives its move from there.
+                # Another writer raced us; drop the cache and re-read on the
+                # next iteration so the AI re-derives its move from the
+                # winning state.
+                cached = None
                 continue
             events.append(event)
             if event["type"] == "game_finished":
                 return events
+            cached = (next_record, result.next_state)
 
         raise ProtocolError("ai_turn_limit_exceeded", "AI turn limit exceeded")
 
@@ -259,6 +288,15 @@ class GameService:
         record: GameRecord,
         result: ApplyResult,
     ) -> dict[str, Any]:
+        event, _ = await self._persist_and_build_event(game_id, record, result)
+        return event
+
+    async def _persist_and_build_event(
+        self,
+        game_id: str,
+        record: GameRecord,
+        result: ApplyResult,
+    ) -> tuple[dict[str, Any], GameRecord]:
         with _map_engine_errors():
             state_json = self._engine.serialize_state(result.next_state)
         await self._repository.save_game(
@@ -273,7 +311,13 @@ class GameService:
         event["response"] = result.response
         if state_view["status"] == "finished":
             event["type"] = "game_finished"
-        return event
+        next_record = GameRecord(
+            game_id=record.game_id,
+            state_json=state_json,
+            metadata=record.metadata,
+            version=record.version + 1,
+        )
+        return event, next_record
 
 
 def _parse[ModelT: BaseModel](payload: dict[str, Any], model: type[ModelT]) -> ModelT:
