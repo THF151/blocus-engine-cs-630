@@ -124,10 +124,6 @@ class ClassicEngineAdapter:
             "board_counts": [
                 {"color": color.value, "count": count} for color, count in state.board_counts()
             ],
-            "board": [
-                [cell.value if cell is not None else None for cell in row]
-                for row in state.board_matrix()
-            ],
         }
         shared_color_turn_index = _shared_color_turn_index(state)
         if shared_color_turn_index is not None:
