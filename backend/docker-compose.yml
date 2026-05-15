@@ -1,0 +1,29 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      additional_contexts:
+        engine-context: ../engine
+    environment:
+      BLOCUS_REDIS_URL: redis://redis:6379/0
+    ports:
+      - "${BLOCUS_BACKEND_PORT:-8000}:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  redis:
+    image: redis:latest
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+volumes:
+  redis-data:

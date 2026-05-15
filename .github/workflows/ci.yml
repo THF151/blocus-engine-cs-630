@@ -11,7 +11,47 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
+  changes:
+    name: Changes
+    runs-on: ubuntu-latest
+
+    outputs:
+      backend: ${{ steps.paths.outputs.backend }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect backend changes
+        id: paths
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            changed_files="$(git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.sha }}")"
+          elif [[ "${{ github.event_name }}" == "push" ]]; then
+            if [[ "${{ github.event.before }}" == "0000000000000000000000000000000000000000" ]]; then
+              changed_files="$(git diff-tree --no-commit-id --name-only -r "${{ github.sha }}")"
+            else
+              changed_files="$(git diff --name-only "${{ github.event.before }}" "${{ github.sha }}")"
+            fi
+          else
+            changed_files="$(git ls-files backend)"
+          fi
+
+          if grep -q '^backend/' <<< "$changed_files"; then
+            echo "backend=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "backend=false" >> "$GITHUB_OUTPUT"
+          fi
+
   frontend:
     name: Frontend / Flutter
     runs-on: ubuntu-latest
@@ -134,3 +174,63 @@ jobs:
           cd ../backend
           uv run maturin develop --manifest-path ../engine/crates/blocus-python/Cargo.toml
           uv run pytest ../engine/crates/blocus-python/python_tests
+
+  package-backend:
+    name: Package / Backend Docker image
+    runs-on: ubuntu-latest
+    needs:
+      - changes
+      - frontend
+      - backend
+      - engine
+    if: needs.changes.outputs.backend == 'true'
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Resolve image name
+        id: image
+        shell: bash
+        run: |
+          set -euo pipefail
+          repository="${GITHUB_REPOSITORY,,}"
+          owner="${repository%%/*}"
+          repo="${repository#*/}"
+          echo "name=ghcr.io/${owner}/${repo}-backend" >> "$GITHUB_OUTPUT"
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.image.outputs.name }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=sha-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and publish backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          build-contexts: |
+            engine-context=./engine
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
