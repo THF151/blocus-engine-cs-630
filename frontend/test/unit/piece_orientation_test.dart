@@ -29,8 +29,11 @@ void main() {
 
     test('all pieces have at least 1 orientation', () {
       for (final p in kPieces) {
-        expect(p.orientations, isNotEmpty,
-            reason: '${p.name} has no orientations');
+        expect(
+          p.orientations,
+          isNotEmpty,
+          reason: '${p.name} has no orientations',
+        );
       }
     });
 
@@ -44,7 +47,9 @@ void main() {
 
     test('cellsForOrientation clamps out-of-range index', () {
       final piece = pieceById(1); // I2, 2 orientations
-      final cellsLast = piece.cellsForOrientation(piece.orientations.length - 1);
+      final cellsLast = piece.cellsForOrientation(
+        piece.orientations.length - 1,
+      );
       final cellsClamped = piece.cellsForOrientation(piece.orientations.length);
       expect(cellsClamped, equals(cellsLast));
     });

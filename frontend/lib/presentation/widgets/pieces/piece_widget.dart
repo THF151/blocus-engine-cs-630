@@ -40,8 +40,7 @@ class PieceWidget extends ConsumerWidget {
     final piece = pieceById(pieceId);
     final cells = piece.cellsForOrientation(orientationIndex);
     final baseColor = colorForPlayer(playerColor);
-    final displayColor =
-        isUsed ? baseColor.withAlpha(70) : baseColor;
+    final displayColor = isUsed ? baseColor.withAlpha(70) : baseColor;
 
     // Compute bounding box so the widget is sized exactly to the piece.
     int minR = cells[0].$1, maxR = cells[0].$1;
@@ -54,6 +53,14 @@ class PieceWidget extends ConsumerWidget {
     }
     final pw = (maxC - minC + 1) * cellSize; // pixel width of piece
     final ph = (maxR - minR + 1) * cellSize; // pixel height of piece
+
+    // When selected the piece is surrounded by a border.  Give it extra room
+    // so the border is drawn outside the piece cells rather than on top of
+    // them.  The BoxDecoration border insets content by its own width (2 px),
+    // so adding borderPad on each side makes the piece sit neatly inside.
+    const double borderPad = 4.0;
+    final double boxW = isSelected ? pw + borderPad * 2 : pw;
+    final double boxH = isSelected ? ph + borderPad * 2 : ph;
 
     // ── Visual wrapper ─────────────────────────────────────────────────────
 
@@ -69,15 +76,18 @@ class PieceWidget extends ConsumerWidget {
 
     if (isSelected) {
       pieceVisual = Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: Theme.of(context).colorScheme.primary,
-            width: 2,
-          ),
-        ),
-        child: pieceVisual,
-      ).animate(onPlay: (c) => c.repeat(reverse: true)).shimmer(
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: Theme.of(context).colorScheme.primary,
+                width: 2,
+              ),
+            ),
+            child: pieceVisual,
+          )
+          .animate(onPlay: (c) => c.repeat(reverse: true))
+          .shimmer(
             duration: 800.ms,
             color: Theme.of(context).colorScheme.primary.withAlpha(80),
           );
@@ -118,11 +128,8 @@ class PieceWidget extends ConsumerWidget {
             ),
           ),
         ),
-        childWhenDragging: Opacity(
-          opacity: 0.3,
-          child: pieceVisual,
-        ),
-        child: SizedBox(width: pw, height: ph, child: pieceVisual),
+        childWhenDragging: Opacity(opacity: 0.3, child: pieceVisual),
+        child: SizedBox(width: boxW, height: boxH, child: pieceVisual),
       ),
     );
   }

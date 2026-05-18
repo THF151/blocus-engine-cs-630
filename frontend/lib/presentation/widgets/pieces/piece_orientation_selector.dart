@@ -27,7 +27,8 @@ class PieceOrientationSelector extends ConsumerWidget {
     // We don't have gameId here so read from lobby → current or first local colour.
     final lobby = ref.read(lobbyNotifierProvider);
     final color = colorForPlayer(
-        lobby.localColors.isNotEmpty ? lobby.localColors.first : 'blue');
+      lobby.localColors.isNotEmpty ? lobby.localColors.first : 'blue',
+    );
 
     return Container(
       height: 72,
@@ -39,44 +40,44 @@ class PieceOrientationSelector extends ConsumerWidget {
       child: FittedBox(
         fit: BoxFit.scaleDown,
         child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          // Prev orientation
-          IconButton(
-            icon: const Icon(Icons.rotate_left_rounded),
-            tooltip: 'Previous orientation',
-            onPressed: () => notifier.rotatePrev(),
-          ),
-          // Piece preview
-          RepaintBoundary(
-            child: SizedBox(
-              width: 56,
-              height: 56,
-              child: CustomPaint(
-                painter: PiecePainter(cells: cells, color: color),
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Prev orientation
+            IconButton(
+              icon: const Icon(Icons.rotate_left_rounded),
+              tooltip: 'Previous orientation',
+              onPressed: () => notifier.rotatePrev(),
+            ),
+            // Piece preview
+            RepaintBoundary(
+              child: SizedBox(
+                width: 56,
+                height: 56,
+                child: CustomPaint(
+                  painter: PiecePainter(cells: cells, color: color),
+                ),
               ),
             ),
-          ),
-          const Gap(8),
-          // Orientation counter
-          Text(
-            '${currentIdx + 1}/$totalOrientations',
-            style: Theme.of(context).textTheme.labelMedium,
-          ),
-          // Next orientation
-          IconButton(
-            icon: const Icon(Icons.rotate_right_rounded),
-            tooltip: 'Next orientation',
-            onPressed: () => notifier.rotateNext(),
-          ),
-          // Deselect
-          IconButton(
-            icon: const Icon(Icons.close_rounded),
-            tooltip: 'Deselect piece',
-            onPressed: () => notifier.clearSelection(),
-          ),
-        ],
-      ),
+            const Gap(8),
+            // Orientation counter
+            Text(
+              '${currentIdx + 1}/$totalOrientations',
+              style: Theme.of(context).textTheme.labelMedium,
+            ),
+            // Next orientation
+            IconButton(
+              icon: const Icon(Icons.rotate_right_rounded),
+              tooltip: 'Next orientation',
+              onPressed: () => notifier.rotateNext(),
+            ),
+            // Deselect
+            IconButton(
+              icon: const Icon(Icons.close_rounded),
+              tooltip: 'Deselect piece',
+              onPressed: () => notifier.clearSelection(),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -18,10 +18,10 @@ class BoardCellModel {
   });
 
   factory BoardCellModel.fromJson(Map<String, dynamic> json) => BoardCellModel(
-        row: json['row'] as int,
-        col: json['col'] as int,
-        color: json['color'] as String,
-      );
+    row: json['row'] as int,
+    col: json['col'] as int,
+    color: json['color'] as String,
+  );
 }
 
 /// Occupied-cell count per colour.
@@ -75,26 +75,26 @@ class GameStateModel {
 
   /// Parses the `state_view` JSON map sent inside backend events.
   factory GameStateModel.fromJson(Map<String, dynamic> json) => GameStateModel(
-        gameId: json['game_id'] as String,
-        mode: json['mode'] as String,
-        scoring: json['scoring'] as String,
-        status: json['status'] as String,
-        version: json['version'] as int,
-        boardSize: json['board_size'] as int,
-        boardIsEmpty: json['board_is_empty'] as bool,
-        currentColor: json['current_color'] as String,
-        turnOrder:
-            (json['turn_order'] as List<dynamic>).cast<String>(),
-        occupiedCount: json['occupied_count'] as int,
-        boardCounts: (json['board_counts'] as List<dynamic>)
-            .map((e) => BoardCountModel.fromJson(e as Map<String, dynamic>))
-            .toList(growable: false),
-        boardCells: (json['board_cells'] as List<dynamic>?)
-                ?.map((e) => BoardCellModel.fromJson(e as Map<String, dynamic>))
-                .toList(growable: false) ??
-            const [],
-        sharedColorTurnIndex: json['shared_color_turn_index'] as int?,
-      );
+    gameId: json['game_id'] as String,
+    mode: json['mode'] as String,
+    scoring: json['scoring'] as String,
+    status: json['status'] as String,
+    version: json['version'] as int,
+    boardSize: json['board_size'] as int,
+    boardIsEmpty: json['board_is_empty'] as bool,
+    currentColor: json['current_color'] as String,
+    turnOrder: (json['turn_order'] as List<dynamic>).cast<String>(),
+    occupiedCount: json['occupied_count'] as int,
+    boardCounts: (json['board_counts'] as List<dynamic>)
+        .map((e) => BoardCountModel.fromJson(e as Map<String, dynamic>))
+        .toList(growable: false),
+    boardCells:
+        (json['board_cells'] as List<dynamic>?)
+            ?.map((e) => BoardCellModel.fromJson(e as Map<String, dynamic>))
+            .toList(growable: false) ??
+        const [],
+    sharedColorTurnIndex: json['shared_color_turn_index'] as int?,
+  );
 
   /// Returns a 2-D matrix view of the board for fast cell lookup.
   ///
@@ -115,7 +115,12 @@ class GameStateModel {
 
   /// Returns the occupied-cell count for a given player colour.
   int countForColor(String color) =>
-      boardCounts.firstWhere((c) => c.color == color, orElse: () => BoardCountModel(color: color, count: 0)).count;
+      boardCounts
+          .firstWhere(
+            (c) => c.color == color,
+            orElse: () => BoardCountModel(color: color, count: 0),
+          )
+          .count;
 
   bool get isFinished => status == 'finished';
 
@@ -133,22 +138,21 @@ class GameStateModel {
     List<BoardCountModel>? boardCounts,
     List<BoardCellModel>? boardCells,
     int? sharedColorTurnIndex,
-  }) =>
-      GameStateModel(
-        gameId: gameId ?? this.gameId,
-        mode: mode ?? this.mode,
-        scoring: scoring ?? this.scoring,
-        status: status ?? this.status,
-        version: version ?? this.version,
-        boardSize: boardSize ?? this.boardSize,
-        boardIsEmpty: boardIsEmpty ?? this.boardIsEmpty,
-        currentColor: currentColor ?? this.currentColor,
-        turnOrder: turnOrder ?? this.turnOrder,
-        occupiedCount: occupiedCount ?? this.occupiedCount,
-        boardCounts: boardCounts ?? this.boardCounts,
-        boardCells: boardCells ?? this.boardCells,
-        sharedColorTurnIndex: sharedColorTurnIndex ?? this.sharedColorTurnIndex,
-      );
+  }) => GameStateModel(
+    gameId: gameId ?? this.gameId,
+    mode: mode ?? this.mode,
+    scoring: scoring ?? this.scoring,
+    status: status ?? this.status,
+    version: version ?? this.version,
+    boardSize: boardSize ?? this.boardSize,
+    boardIsEmpty: boardIsEmpty ?? this.boardIsEmpty,
+    currentColor: currentColor ?? this.currentColor,
+    turnOrder: turnOrder ?? this.turnOrder,
+    occupiedCount: occupiedCount ?? this.occupiedCount,
+    boardCounts: boardCounts ?? this.boardCounts,
+    boardCells: boardCells ?? this.boardCells,
+    sharedColorTurnIndex: sharedColorTurnIndex ?? this.sharedColorTurnIndex,
+  );
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

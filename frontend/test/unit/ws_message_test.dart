@@ -70,7 +70,7 @@ void main() {
             'col': 0,
             'board_index': 0,
             'score_delta': 1,
-          }
+          },
         ],
       });
       expect(msg, isA<LegalMovesMessage>());

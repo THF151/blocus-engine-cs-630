@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants.dart';
 import '../../../domain/game_notifier.dart';
+import '../../../domain/lobby_notifier.dart';
 import '../../../domain/providers.dart';
 import 'game_board_painter.dart';
 
@@ -46,12 +47,19 @@ class _GameBoardState extends ConsumerState<GameBoard> {
     final boardSize = boardMatrix.length;
 
     final isLocalTurn =
-        gs.gameState != null && lobby.localColors.contains(currentColor);
+        gs.gameState != null &&
+        lobby.localColors.contains(currentColor) &&
+        isHumanControlledTurn(
+          mode: lobby.mode,
+          currentColor: currentColor,
+          sharedColorTurnIndex: gs.gameState?.sharedColorTurnIndex,
+        );
 
     // Start corners for the current board size
-    final startCorners = boardSize == kDuoBoardSize
-        ? kDuoStartCorners.values.toSet()
-        : kClassicStartCorners.values.toSet();
+    final startCorners =
+        boardSize == kDuoBoardSize
+            ? kDuoStartCorners.values.toSet()
+            : kClassicStartCorners.values.toSet();
 
     // Compute legal top-left positions for highlighting
     final legalPositions = <(int, int)>{};
@@ -69,9 +77,10 @@ class _GameBoardState extends ConsumerState<GameBoard> {
     if (_hoverAnchor != null && sel.hasPieceSelected) {
       final cells = sel.currentCells;
       if (cells != null) {
-        previewCells = cells
-            .map((c) => (_hoverAnchor!.$1 + c.$1, _hoverAnchor!.$2 + c.$2))
-            .toList();
+        previewCells =
+            cells
+                .map((c) => (_hoverAnchor!.$1 + c.$1, _hoverAnchor!.$2 + c.$2))
+                .toList();
       }
     }
 
@@ -80,15 +89,13 @@ class _GameBoardState extends ConsumerState<GameBoard> {
     return RepaintBoundary(
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final side =
-              math.min(constraints.maxWidth, constraints.maxHeight);
+          final side = math.min(constraints.maxWidth, constraints.maxHeight);
 
           // Keep the piece tray cell size in sync with the actual board cells.
           if (boardSize > 0) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (!mounted) return;
-              ref.read(boardCellSizeProvider.notifier).state =
-                  side / boardSize;
+              ref.read(boardCellSizeProvider.notifier).state = side / boardSize;
             });
           }
 
@@ -112,15 +119,19 @@ class _GameBoardState extends ConsumerState<GameBoard> {
                 },
                 builder: (context, candidates, rejected) {
                   return GestureDetector(
-                    onTapUp: isLocalTurn
-                        ? (d) {
-                            final anchor = _localToCell(
-                                d.localPosition, side, boardSize);
-                            if (anchor != null) {
-                              _tryPlaceAt(anchor.$1, anchor.$2, gs);
+                    onTapUp:
+                        isLocalTurn
+                            ? (d) {
+                              final anchor = _localToCell(
+                                d.localPosition,
+                                side,
+                                boardSize,
+                              );
+                              if (anchor != null) {
+                                _tryPlaceAt(anchor.$1, anchor.$2, gs);
+                              }
                             }
-                          }
-                        : null,
+                            : null,
                     child: CustomPaint(
                       key: _boardKey,
                       size: Size(side, side),
@@ -171,11 +182,13 @@ class _GameBoardState extends ConsumerState<GameBoard> {
     if (!sel.hasPieceSelected) return;
 
     // Find the matching legal move
-    final match = gs.legalMoves.where((m) =>
-        m.pieceId == sel.selectedPieceId &&
-        m.orientationId == sel.orientationIndex &&
-        m.row == row &&
-        m.col == col);
+    final match = gs.legalMoves.where(
+      (m) =>
+          m.pieceId == sel.selectedPieceId &&
+          m.orientationId == sel.orientationIndex &&
+          m.row == row &&
+          m.col == col,
+    );
 
     if (match.isEmpty) return;
 

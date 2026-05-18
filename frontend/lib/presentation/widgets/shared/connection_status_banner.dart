@@ -24,30 +24,30 @@ class ConnectionStatusBanner extends ConsumerWidget {
       height: isReconnecting ? 32 : 0,
       color: Colors.amber.shade700,
       alignment: Alignment.center,
-      child: isReconnecting
-          ? Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor:
-                        AlwaysStoppedAnimation<Color>(Colors.white),
+      child:
+          isReconnecting
+              ? Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  'Reconnecting…',
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                      ),
-                ),
-              ],
-            )
-          : null,
+                  const SizedBox(width: 8),
+                  Text(
+                    'Reconnecting…',
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              )
+              : null,
     );
   }
 }

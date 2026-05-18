@@ -54,22 +54,23 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
     ],
     // Global error page so the app never shows a blank screen on bad routes.
-    errorBuilder: (context, state) => Scaffold(
-      body: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.error_outline, size: 48),
-            const SizedBox(height: 16),
-            Text('Page not found: ${state.uri}'),
-            const SizedBox(height: 16),
-            FilledButton(
-              onPressed: () => context.go(kRouteHome),
-              child: const Text('Back to Home'),
+    errorBuilder:
+        (context, state) => Scaffold(
+          body: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.error_outline, size: 48),
+                const SizedBox(height: 16),
+                Text('Page not found: ${state.uri}'),
+                const SizedBox(height: 16),
+                FilledButton(
+                  onPressed: () => context.go(kRouteHome),
+                  child: const Text('Back to Home'),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
-      ),
-    ),
   );
 });

@@ -44,13 +44,15 @@ class GameBoardPainter extends CustomPainter {
     this.previewCells,
     required this.activeColor,
   }) {
-    _gridPaint = Paint()
-      ..color = const Color(0xFFBDBDBD)
-      ..strokeWidth = 0.5
-      ..style = PaintingStyle.stroke;
+    _gridPaint =
+        Paint()
+          ..color = const Color(0xFFBDBDBD)
+          ..strokeWidth = 0.5
+          ..style = PaintingStyle.stroke;
     _emptyPaint = Paint()..color = const Color(0xFFF5F5F5);
     _cornerPaint = Paint()..color = const Color(0xFFE0E0E0);
-    _highlightPaint = Paint()..color = colorForPlayer(activeColor).withAlpha(80);
+    _highlightPaint =
+        Paint()..color = colorForPlayer(activeColor).withAlpha(80);
     _previewPaint = Paint()..color = colorForPlayer(activeColor).withAlpha(160);
   }
 
@@ -66,14 +68,14 @@ class GameBoardPainter extends CustomPainter {
 
         if (color != null) {
           // Occupied cell
-          final paint = Paint()
-            ..color = colorForPlayer(color);
+          final paint = Paint()..color = colorForPlayer(color);
           canvas.drawRect(rect, paint);
           // Subtle inner border for visual separation between same-colour tiles
-          final innerPaint = Paint()
-            ..color = Colors.black.withAlpha(30)
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 0.8;
+          final innerPaint =
+              Paint()
+                ..color = Colors.black.withAlpha(30)
+                ..style = PaintingStyle.stroke
+                ..strokeWidth = 0.8;
           canvas.drawRect(rect.deflate(1), innerPaint);
         } else if (startCorners.contains((r, c))) {
           // Start corner – slightly tinted background
@@ -127,11 +129,12 @@ class GameBoardPainter extends CustomPainter {
     final markerPaint = Paint()..color = const Color(0xFFBDBDBD);
     final s = rect.width * _cornerFraction;
     // Determine which corner based on the cell position – draw towards center
-    final path = Path()
-      ..moveTo(rect.left, rect.top)
-      ..lineTo(rect.left + s, rect.top)
-      ..lineTo(rect.left, rect.top + s)
-      ..close();
+    final path =
+        Path()
+          ..moveTo(rect.left, rect.top)
+          ..lineTo(rect.left + s, rect.top)
+          ..lineTo(rect.left, rect.top + s)
+          ..close();
     canvas.drawPath(path, markerPaint);
   }
 

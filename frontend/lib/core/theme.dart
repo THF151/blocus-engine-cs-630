@@ -50,15 +50,14 @@ class PlayerColors extends ThemeExtension<PlayerColors> {
     Color? green,
     Color? black,
     Color? white,
-  }) =>
-      PlayerColors(
-        blue: blue ?? this.blue,
-        yellow: yellow ?? this.yellow,
-        red: red ?? this.red,
-        green: green ?? this.green,
-        black: black ?? this.black,
-        white: white ?? this.white,
-      );
+  }) => PlayerColors(
+    blue: blue ?? this.blue,
+    yellow: yellow ?? this.yellow,
+    red: red ?? this.red,
+    green: green ?? this.green,
+    black: black ?? this.black,
+    white: white ?? this.white,
+  );
 
   @override
   PlayerColors lerp(PlayerColors? other, double t) {
@@ -100,21 +99,21 @@ abstract final class AppTheme {
 
   /// Light theme – seeded from the Blokus classic blue.
   static ThemeData light() => ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: kPlayerColors['blue']!,
-          brightness: Brightness.light,
-        ),
-        extensions: const [_playerColorsLight],
-      );
+    useMaterial3: true,
+    colorScheme: ColorScheme.fromSeed(
+      seedColor: kPlayerColors['blue']!,
+      brightness: Brightness.light,
+    ),
+    extensions: const [_playerColorsLight],
+  );
 
   /// Dark theme – same seed, dark brightness.
   static ThemeData dark() => ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: kPlayerColors['blue']!,
-          brightness: Brightness.dark,
-        ),
-        extensions: const [_playerColorsDark],
-      );
+    useMaterial3: true,
+    colorScheme: ColorScheme.fromSeed(
+      seedColor: kPlayerColors['blue']!,
+      brightness: Brightness.dark,
+    ),
+    extensions: const [_playerColorsDark],
+  );
 }

@@ -12,12 +12,7 @@ import 'models/ws_message.dart';
 // ──────────────────────────────────────────────────────────────────────────────
 
 /// Represents the lifecycle of the WebSocket connection.
-enum WsConnectionState {
-  disconnected,
-  connecting,
-  connected,
-  reconnecting,
-}
+enum WsConnectionState { disconnected, connecting, connected, reconnecting }
 
 // ──────────────────────────────────────────────────────────────────────────────
 // WebSocketService
@@ -42,8 +37,7 @@ class WebSocketService {
   static const int _maxRetryBackoffBase = 2;
 
   // Output streams
-  final _messagesController =
-      StreamController<WsMessage>.broadcast();
+  final _messagesController = StreamController<WsMessage>.broadcast();
   final _connectionStateController =
       StreamController<WsConnectionState>.broadcast();
 
@@ -67,6 +61,15 @@ class WebSocketService {
   /// Initiates a connection to [serverUrl] (must start with `ws://` or
   /// `wss://`).  Reconnects automatically on failure.
   Future<void> connect(String serverUrl) async {
+    // Tear down any existing connection first so that orphaned subscriptions
+    // cannot fire _onDone → _scheduleReconnect() and overwrite the new channel.
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    _subscription?.cancel();
+    _subscription = null;
+    _channel?.sink.close();
+    _channel = null;
+
     _serverUrl = serverUrl;
     _shouldConnect = true;
     _retryCount = 0;

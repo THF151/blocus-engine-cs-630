@@ -69,9 +69,9 @@ class _ScoreScreenState extends ConsumerState<ScoreScreen> {
                       playerNames: lobby.playerNames,
                     ).animate().fadeIn(delay: 400.ms).slideY(begin: 0.2),
                   const Gap(40),
-                  _ActionButtons(gameId: widget.gameId)
-                      .animate()
-                      .fadeIn(delay: 800.ms),
+                  _ActionButtons(
+                    gameId: widget.gameId,
+                  ).animate().fadeIn(delay: 800.ms),
                 ],
               ),
             ),
@@ -95,18 +95,16 @@ class _TrophyHeader extends StatelessWidget {
         const Gap(8),
         Text(
           'Game Over',
-          style: Theme.of(context)
-              .textTheme
-              .headlineMedium
-              ?.copyWith(fontWeight: FontWeight.bold),
+          style: Theme.of(
+            context,
+          ).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold),
           textAlign: TextAlign.center,
         ),
         Text(
           'Final Scores',
-          style: Theme.of(context)
-              .textTheme
-              .titleMedium
-              ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
         ),
       ],
     );
@@ -141,13 +139,17 @@ class _ScoreTable extends StatelessWidget {
               final rank = e.key;
               final entry = e.value;
               // Find which colour this player_id controls
-              final color = colorToPlayerId.entries
-                  .where((c) => c.value == entry.playerId)
-                  .map((c) => c.key)
-                  .firstOrNull;
-              final displayName = playerNames[entry.playerId] ??
+              final color =
+                  colorToPlayerId.entries
+                      .where((c) => c.value == entry.playerId)
+                      .map((c) => c.key)
+                      .firstOrNull;
+              final displayName =
+                  playerNames[entry.playerId] ??
                   entry.playerId.substring(
-                      0, entry.playerId.length.clamp(0, 8));
+                    0,
+                    entry.playerId.length.clamp(0, 8),
+                  );
               return _ScoreRow(
                 rank: rank + 1,
                 playerId: displayName,
@@ -203,10 +205,7 @@ class _ScoreRow extends StatelessWidget {
           ),
           // Colour dot
           if (color != null) ...[
-            CircleAvatar(
-              radius: 8,
-              backgroundColor: colorForPlayer(color!),
-            ),
+            CircleAvatar(radius: 8, backgroundColor: colorForPlayer(color!)),
             const Gap(8),
           ],
           // Player name
@@ -214,8 +213,7 @@ class _ScoreRow extends StatelessWidget {
             child: Text(
               playerId,
               style: TextStyle(
-                fontWeight:
-                    isWinner ? FontWeight.bold : FontWeight.normal,
+                fontWeight: isWinner ? FontWeight.bold : FontWeight.normal,
                 color: isWinner ? cs.onPrimaryContainer : cs.onSurface,
               ),
             ),

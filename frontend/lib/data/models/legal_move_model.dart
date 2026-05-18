@@ -30,13 +30,13 @@ class LegalMoveModel {
   });
 
   factory LegalMoveModel.fromJson(Map<String, dynamic> json) => LegalMoveModel(
-        pieceId: json['piece_id'] as int,
-        orientationId: json['orientation_id'] as int,
-        row: json['row'] as int,
-        col: json['col'] as int,
-        boardIndex: json['board_index'] as int,
-        scoreDelta: json['score_delta'] as int,
-      );
+    pieceId: json['piece_id'] as int,
+    orientationId: json['orientation_id'] as int,
+    row: json['row'] as int,
+    col: json['col'] as int,
+    boardIndex: json['board_index'] as int,
+    scoreDelta: json['score_delta'] as int,
+  );
 
   @override
   bool operator ==(Object other) =>

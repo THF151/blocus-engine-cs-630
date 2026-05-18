@@ -46,8 +46,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   /// initial state fetch.
   void _bootstrap() {
     final lobby = ref.read(lobbyNotifierProvider);
-    final notifier =
-        ref.read(gameNotifierProvider(widget.gameId).notifier);
+    final notifier = ref.read(gameNotifierProvider(widget.gameId).notifier);
 
     if (lobby.localPlayerId.isNotEmpty && lobby.localColors.isNotEmpty) {
       notifier.setLocalIdentity(
@@ -71,6 +70,16 @@ class _GameScreenState extends ConsumerState<GameScreen> {
           notifier.attachAi(entry.value, color);
         }
       }
+
+      // Three-player: yellow and red players also rotate through the shared
+      // green color, so they need to be registered as AI for green too.
+      if (lobby.mode == GameModeOption.threePlayer) {
+        for (final entry in lobby.colorToPlayerId.entries) {
+          if (entry.value == localId) continue; // human – plays own green turns
+          if (entry.key == 'green') continue; // not a real owned slot
+          notifier.attachAi(entry.value, 'green');
+        }
+      }
     } else {
       // Spectator fallback (e.g. opened directly via deep link)
       notifier.subscribeAsSpectator();
@@ -82,9 +91,12 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     final gameState = ref.watch(gameNotifierProvider(widget.gameId));
     final lobby = ref.read(lobbyNotifierProvider);
 
-    // Auto-navigate to score screen on game finished
+    // Auto-navigate to score screen on game finished.
+    // Only fire on the transition TO finished so that a stale provider state
+    // (from a previous visit to the same gameId) doesn't re-trigger navigation.
     ref.listen(gameNotifierProvider(widget.gameId), (prev, next) {
-      if (next.gameState?.isFinished == true) {
+      if (next.gameState?.isFinished == true &&
+          prev?.gameState?.isFinished != true) {
         context.go('$kRouteScore/${widget.gameId}');
       }
       // Show backend / engine errors as a SnackBar (e.g. pass rejected)
@@ -101,13 +113,16 @@ class _GameScreenState extends ConsumerState<GameScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: _GameTitle(
-          gameId: widget.gameId,
-          gameState: gameState,
-        ),
+        title: _GameTitle(gameId: widget.gameId, gameState: gameState),
         centerTitle: false,
         actions: [
           _PassButton(gameId: widget.gameId),
+          const Gap(4),
+          IconButton(
+            icon: const Icon(Icons.home_rounded),
+            tooltip: 'Zur Lobby',
+            onPressed: () => context.go(kRouteHome),
+          ),
           const Gap(8),
         ],
       ),
@@ -205,17 +220,21 @@ class _PlayerInfoRow extends ConsumerWidget {
               if (i > 0) const SizedBox(height: 4),
               () {
                 final color = turnOrder[i];
+                // In three-player mode 'green' is a shared rotation color,
+                // not a separate player — omit its panel entirely.
+                if (lobby.mode == GameModeOption.threePlayer &&
+                    color == 'green') {
+                  return const SizedBox.shrink();
+                }
                 final playerId = lobby.colorToPlayerId[color] ?? color;
-                final displayName = lobby.playerNames[playerId] ??
-                    playerId.substring(
-                        0, playerId.length.clamp(0, 8));
-                final isActive =
-                    gameState.gameState?.currentColor == color;
+                final displayName =
+                    lobby.playerNames[playerId] ??
+                    playerId.substring(0, playerId.length.clamp(0, 8));
+                final isActive = gameState.gameState?.currentColor == color;
                 return PlayerInfoPanel(
                   color: color,
                   playerId: displayName,
-                  cellCount:
-                      gameState.gameState?.countForColor(color) ?? 0,
+                  cellCount: gameState.gameState?.countForColor(color) ?? 0,
                   isActive: isActive,
                 );
               }(),
@@ -253,12 +272,12 @@ class _GameTitle extends ConsumerWidget {
   }
 
   String _modeLabel(String mode) => switch (mode) {
-        'duo' => 'Duo',
-        'two_player' => '2-Player',
-        'three_player' => '3-Player',
-        'four_player' => '4-Player',
-        _ => mode,
-      };
+    'duo' => 'Duo',
+    'two_player' => '2-Player',
+    'three_player' => '3-Player',
+    'four_player' => '4-Player',
+    _ => mode,
+  };
 }
 
 /// Shows a warning banner when it is the local player's turn but there are
@@ -272,10 +291,10 @@ class _NoMovesHint extends ConsumerWidget {
     final gs = ref.watch(gameNotifierProvider(gameId));
     final lobby = ref.read(lobbyNotifierProvider);
 
-    final isMyTurn = gs.gameState != null &&
+    final isMyTurn =
+        gs.gameState != null &&
         lobby.localColors.contains(gs.gameState!.currentColor);
-    final noMoves =
-        isMyTurn && gs.legalMoves.isEmpty && !gs.isLoadingMove;
+    final noMoves = isMyTurn && gs.legalMoves.isEmpty && !gs.isLoadingMove;
 
     if (!noMoves) return const SizedBox.shrink();
 
@@ -296,9 +315,9 @@ class _NoMovesHint extends ConsumerWidget {
               child: Text(
                 'Kein Zug möglich – bitte passen!',
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: cs.onErrorContainer,
-                      fontWeight: FontWeight.bold,
-                    ),
+                  color: cs.onErrorContainer,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
           ],
@@ -317,9 +336,9 @@ class _PassButton extends ConsumerWidget {
     final gameState = ref.watch(gameNotifierProvider(gameId));
     final lobby = ref.read(lobbyNotifierProvider);
 
-    final isMyTurn = gameState.gameState != null &&
-        lobby.localColors
-            .contains(gameState.gameState!.currentColor);
+    final isMyTurn =
+        gameState.gameState != null &&
+        lobby.localColors.contains(gameState.gameState!.currentColor);
     // legalMoves is empty either because genuinely no moves exist, or because
     // the backend hasn't responded yet. In both cases the player should be
     // able to press Pass (the engine will reject it if moves are still possible).
@@ -331,9 +350,11 @@ class _PassButton extends ConsumerWidget {
     // When noMoves: prominent red + shimmer to guide the user.
     // When moves exist: muted style so the player knows pass is a last resort.
     return TextButton.icon(
-      onPressed: gameState.isLoadingMove
-          ? null
-          : () => ref.read(gameNotifierProvider(gameId).notifier).passMove(),
+      onPressed:
+          gameState.isLoadingMove
+              ? null
+              : () =>
+                  ref.read(gameNotifierProvider(gameId).notifier).passMove(),
       icon: const Icon(Icons.skip_next_rounded),
       label: const Text('Pass'),
       style: TextButton.styleFrom(

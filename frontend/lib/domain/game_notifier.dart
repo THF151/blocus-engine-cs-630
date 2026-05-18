@@ -46,8 +46,7 @@ class GameNotifierState {
 
   /// Convenience: current board matrix for rendering.
   List<List<String?>> get boardMatrix =>
-      gameState?.toMatrix() ??
-      List.generate(20, (_) => List.filled(20, null));
+      gameState?.toMatrix() ?? List.generate(20, (_) => List.filled(20, null));
 
   GameNotifierState copyWith({
     GameStateModel? gameState,
@@ -57,15 +56,14 @@ class GameNotifierState {
     bool? isLoadingMove,
     String? errorMessage,
     bool clearError = false,
-  }) =>
-      GameNotifierState(
-        gameState: gameState ?? this.gameState,
-        legalMoves: legalMoves ?? this.legalMoves,
-        usedPieceIds: usedPieceIds ?? this.usedPieceIds,
-        scoreReport: scoreReport ?? this.scoreReport,
-        isLoadingMove: isLoadingMove ?? this.isLoadingMove,
-        errorMessage: clearError ? null : errorMessage ?? this.errorMessage,
-      );
+  }) => GameNotifierState(
+    gameState: gameState ?? this.gameState,
+    legalMoves: legalMoves ?? this.legalMoves,
+    usedPieceIds: usedPieceIds ?? this.usedPieceIds,
+    scoreReport: scoreReport ?? this.scoreReport,
+    isLoadingMove: isLoadingMove ?? this.isLoadingMove,
+    errorMessage: clearError ? null : errorMessage ?? this.errorMessage,
+  );
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -92,7 +90,7 @@ class GameNotifier extends StateNotifier<GameNotifierState> {
   StreamSubscription<WsMessage>? _sub;
 
   GameNotifier(this._ws, this._repo, this.gameId)
-      : super(const GameNotifierState()) {
+    : super(const GameNotifierState()) {
     _sub = _ws.messages.listen(_handleMessage);
   }
 
@@ -126,7 +124,11 @@ class GameNotifier extends StateNotifier<GameNotifierState> {
     if (color == null || !_localColors.contains(color)) return;
 
     final newUsedIds = {...state.usedPieceIds, move.pieceId};
-    state = state.copyWith(isLoadingMove: true, usedPieceIds: newUsedIds, clearError: true);
+    state = state.copyWith(
+      isLoadingMove: true,
+      usedPieceIds: newUsedIds,
+      clearError: true,
+    );
     _repo.placeMove(
       gameId: gameId,
       playerId: _localPlayerId!,
@@ -145,11 +147,7 @@ class GameNotifier extends StateNotifier<GameNotifierState> {
     if (color == null || !_localColors.contains(color)) return;
 
     state = state.copyWith(isLoadingMove: true, clearError: true);
-    _repo.passMove(
-      gameId: gameId,
-      playerId: _localPlayerId!,
-      color: color,
-    );
+    _repo.passMove(gameId: gameId, playerId: _localPlayerId!, color: color);
   }
 
   /// Requests legal moves for the current player colour.
@@ -215,11 +213,15 @@ class GameNotifier extends StateNotifier<GameNotifierState> {
       case WsErrorMessage(:final code, :final message):
         state = state.copyWith(
           isLoadingMove: false,
-          errorMessage: '[$code] $message',
+          errorMessage: _friendlyError(code, message),
         );
 
       case KickedMessage():
         // Connection was taken over by a reconnect; handled at app level.
+        break;
+
+      case LegalMovesMessage(:final gameId, :final color)
+          when gameId == this.gameId && !_localColors.contains(color):
         break;
 
       default:
@@ -248,6 +250,14 @@ class GameNotifier extends StateNotifier<GameNotifierState> {
     // Track used pieces for the local player so the tray greys them out.
     // We infer this from legal-moves responses (pieces absent from legal moves
     // have been played).  No direct tracking needed here.
+  }
+
+  /// Maps backend error codes/messages to user-facing German strings.
+  String _friendlyError(String code, String message) {
+    if (code == 'rule_violation' && message.contains('legal move')) {
+      return 'Es sind noch Züge möglich';
+    }
+    return '[$code] $message';
   }
 
   @override

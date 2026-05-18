@@ -62,10 +62,11 @@ class PiecePainter extends CustomPainter {
     }
 
     final fillPaint = Paint()..color = color;
-    final borderPaint = Paint()
-      ..color = Colors.black.withAlpha(60)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 0.8;
+    final borderPaint =
+        Paint()
+          ..color = Colors.black.withAlpha(60)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 0.8;
 
     for (final (r, c) in cells) {
       final rect = Rect.fromLTWH(
@@ -80,10 +81,11 @@ class PiecePainter extends CustomPainter {
 
     // Selection glow
     if (selected) {
-      final glowPaint = Paint()
-        ..color = Colors.white.withAlpha(120)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.5;
+      final glowPaint =
+          Paint()
+            ..color = Colors.white.withAlpha(120)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 2.5;
       for (final (r, c) in cells) {
         final rect = Rect.fromLTWH(
           offsetX + (c - minC) * cellSize,

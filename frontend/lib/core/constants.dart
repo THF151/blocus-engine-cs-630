@@ -126,9 +126,9 @@ class PieceDefinition {
   /// Returns the absolute board cells when this piece (in [orientationId]) is
   /// placed with its bounding-box top-left at board coordinate ([row], [col]).
   List<(int, int)> absoluteCells(int orientationId, int row, int col) =>
-      cellsForOrientation(orientationId)
-          .map((c) => (c.$1 + row, c.$2 + col))
-          .toList();
+      cellsForOrientation(
+        orientationId,
+      ).map((c) => (c.$1 + row, c.$2 + col)).toList();
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -218,14 +218,16 @@ List<PieceDefinition> _buildPieces() {
     (20, 'Z5', [(0, 0), (0, 1), (1, 1), (2, 1), (2, 2)]),
   ];
 
-  return raw.map((t) {
-    final (id, name, base) = t;
-    return PieceDefinition(
-      id: id,
-      name: name,
-      orientations: computeOrientations(base),
-    );
-  }).toList(growable: false);
+  return raw
+      .map((t) {
+        final (id, name, base) = t;
+        return PieceDefinition(
+          id: id,
+          name: name,
+          orientations: computeOrientations(base),
+        );
+      })
+      .toList(growable: false);
 }
 
 /// Lookup a [PieceDefinition] by its engine ID.

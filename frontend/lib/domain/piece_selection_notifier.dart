@@ -13,10 +13,7 @@ class PieceSelectionState {
   /// Index into [PieceDefinition.orientations] for the selected piece.
   final int orientationIndex;
 
-  const PieceSelectionState({
-    this.selectedPieceId,
-    this.orientationIndex = 0,
-  });
+  const PieceSelectionState({this.selectedPieceId, this.orientationIndex = 0});
 
   bool get hasPieceSelected => selectedPieceId != null;
 
@@ -36,12 +33,11 @@ class PieceSelectionState {
     int? selectedPieceId,
     int? orientationIndex,
     bool clearSelection = false,
-  }) =>
-      PieceSelectionState(
-        selectedPieceId:
-            clearSelection ? null : selectedPieceId ?? this.selectedPieceId,
-        orientationIndex: orientationIndex ?? this.orientationIndex,
-      );
+  }) => PieceSelectionState(
+    selectedPieceId:
+        clearSelection ? null : selectedPieceId ?? this.selectedPieceId,
+    orientationIndex: orientationIndex ?? this.orientationIndex,
+  );
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -61,7 +57,10 @@ class PieceSelectionNotifier extends StateNotifier<PieceSelectionState> {
     if (state.selectedPieceId == pieceId) {
       clearSelection();
     } else {
-      state = PieceSelectionState(selectedPieceId: pieceId, orientationIndex: 0);
+      state = PieceSelectionState(
+        selectedPieceId: pieceId,
+        orientationIndex: 0,
+      );
     }
   }
 

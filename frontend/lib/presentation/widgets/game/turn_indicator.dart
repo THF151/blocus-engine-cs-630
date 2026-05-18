@@ -23,7 +23,8 @@ class TurnIndicator extends ConsumerWidget {
 
     final playerColor = colorForPlayer(currentColor);
     final playerId = lobby.colorToPlayerId[currentColor] ?? currentColor;
-    final displayName = lobby.playerNames[playerId] ??
+    final displayName =
+        lobby.playerNames[playerId] ??
         playerId.substring(0, playerId.length.clamp(0, 8));
     final isMe = lobby.localColors.contains(currentColor);
 
@@ -45,9 +46,9 @@ class TurnIndicator extends ConsumerWidget {
             Text(
               isMe ? 'Your turn!' : '$displayName\'s turn',
               style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                    color: playerColor,
-                    fontWeight: FontWeight.bold,
-                  ),
+                color: playerColor,
+                fontWeight: FontWeight.bold,
+              ),
             ),
             if (gs.isLoadingMove) ...[
               const Gap(8),

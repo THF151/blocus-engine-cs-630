@@ -18,10 +18,7 @@ void main() {
   Widget buildApp() {
     final router = GoRouter(
       routes: [
-        GoRoute(
-          path: '/',
-          builder: (_, _) => const HomeScreen(),
-        ),
+        GoRoute(path: '/', builder: (_, _) => const HomeScreen()),
         GoRoute(
           path: '/game/:gameId',
           builder: (_, _) => const Scaffold(body: Text('Game')),

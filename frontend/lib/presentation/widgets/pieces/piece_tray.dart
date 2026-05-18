@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../domain/lobby_notifier.dart';
 import '../../../domain/providers.dart';
 import 'piece_widget.dart';
 
@@ -22,23 +23,32 @@ class PieceTray extends ConsumerWidget {
 
     final currentColor = gs.gameState?.currentColor ?? 'blue';
     final isMyTurn =
-        gs.gameState != null && lobby.localColors.contains(currentColor);
+        gs.gameState != null &&
+        lobby.localColors.contains(currentColor) &&
+        isHumanControlledTurn(
+          mode: lobby.mode,
+          currentColor: currentColor,
+          sharedColorTurnIndex: gs.gameState?.sharedColorTurnIndex,
+        );
 
     // Determine the colour to render for local player's pieces.
     // If the local player controls multiple colours (2-player mode), use the
     // current turn colour when it is their turn, otherwise fall back to the
     // first local colour.
-    final displayColor = isMyTurn
-        ? currentColor
-        : (lobby.localColors.isNotEmpty ? lobby.localColors.first : 'blue');
+    final displayColor =
+        isMyTurn
+            ? currentColor
+            : (lobby.localColors.isNotEmpty ? lobby.localColors.first : 'blue');
 
     final usedIds = gs.usedPieceIds;
     final cellSize = ref.watch(boardCellSizeProvider);
 
     // Only show available pieces – used pieces are removed from the list.
-    final availableIds = List.generate(21, (i) => i)
-        .where((id) => !usedIds.contains(id))
-        .toList();
+    final availableIds =
+        List.generate(
+          21,
+          (i) => i,
+        ).where((id) => !usedIds.contains(id)).toList();
 
     return IgnorePointer(
       ignoring: !isMyTurn,

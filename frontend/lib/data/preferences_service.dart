@@ -26,7 +26,8 @@ class PreferencesService {
     final uri = Uri.tryParse(url);
     if (uri == null || (uri.scheme != 'ws' && uri.scheme != 'wss')) {
       throw ArgumentError(
-          'Invalid server URL "$url": must start with ws:// or wss://');
+        'Invalid server URL "$url": must start with ws:// or wss://',
+      );
     }
     await _prefs.setString(_kServerUrl, url);
   }

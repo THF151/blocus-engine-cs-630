@@ -178,8 +178,7 @@ final class LegalMovesMessage extends WsMessage {
         gameId: json['game_id'] as String,
         playerId: json['player_id'] as String,
         color: json['color'] as String,
-        moves: (json['moves'] as List<dynamic>)
-            .cast<Map<String, dynamic>>(),
+        moves: (json['moves'] as List<dynamic>).cast<Map<String, dynamic>>(),
       );
 }
 
@@ -202,8 +201,9 @@ final class ScoreReportMessage extends WsMessage {
     return ScoreReportMessage(
       gameId: json['game_id'] as String,
       scoring: score['scoring'] as String? ?? 'basic',
-      entries: (score['entries'] as List<dynamic>? ?? [])
-          .cast<Map<String, dynamic>>(),
+      entries:
+          (score['entries'] as List<dynamic>? ?? [])
+              .cast<Map<String, dynamic>>(),
     );
   }
 }
@@ -225,11 +225,10 @@ final class WsErrorMessage extends WsMessage {
 
   const WsErrorMessage({required this.code, required this.message});
 
-  factory WsErrorMessage.fromJson(Map<String, dynamic> json) =>
-      WsErrorMessage(
-        code: json['code'] as String? ?? 'unknown',
-        message: json['message'] as String? ?? '',
-      );
+  factory WsErrorMessage.fromJson(Map<String, dynamic> json) => WsErrorMessage(
+    code: json['code'] as String? ?? 'unknown',
+    message: json['message'] as String? ?? '',
+  );
 }
 
 /// Fallback for any unrecognised message type.

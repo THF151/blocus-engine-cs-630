@@ -12,24 +12,45 @@ import '../data/websocket_service.dart';
 
 /// UI representation of the Blokus game mode.
 enum GameModeOption {
-  duo,        // 2 players, 14×14
-  twoPlayer,  // 2 players, 20×20 (each controls 2 colours)
+  duo, // 2 players, 14×14
+  twoPlayer, // 2 players, 20×20 (each controls 2 colours)
   threePlayer,
   fourPlayer;
 
   String get backendValue => switch (this) {
-        GameModeOption.duo => 'duo',
-        GameModeOption.twoPlayer => 'two_player',
-        GameModeOption.threePlayer => 'three_player',
-        GameModeOption.fourPlayer => 'four_player',
-      };
+    GameModeOption.duo => 'duo',
+    GameModeOption.twoPlayer => 'two_player',
+    GameModeOption.threePlayer => 'three_player',
+    GameModeOption.fourPlayer => 'four_player',
+  };
 
   String get displayName => switch (this) {
-        GameModeOption.duo => 'Duo (14×14)',
-        GameModeOption.twoPlayer => 'Classic 2-Player',
-        GameModeOption.threePlayer => 'Classic 3-Player',
-        GameModeOption.fourPlayer => 'Classic 4-Player',
-      };
+    GameModeOption.duo => 'Duo (14×14)',
+    GameModeOption.twoPlayer => 'Classic 2-Player',
+    GameModeOption.threePlayer => 'Classic 3-Player',
+    GameModeOption.fourPlayer => 'Classic 4-Player',
+  };
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ──────────────────────────────────────────────────────────────────────────────
+
+/// Returns `true` when the local human player is the active controller for
+/// [currentColor].
+///
+/// In three-player mode the green color is shared in a fixed rotation:
+/// index 0 → human (blue player), index 1 → ai1, index 2 → ai2, then wraps.
+/// For every other mode or color the human is always the controller.
+bool isHumanControlledTurn({
+  required GameModeOption mode,
+  required String currentColor,
+  required int? sharedColorTurnIndex,
+}) {
+  if (mode != GameModeOption.threePlayer) return true;
+  if (currentColor != 'green') return true;
+  final idx = sharedColorTurnIndex;
+  return idx == null || idx % 3 == 0;
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -38,10 +59,10 @@ enum GameModeOption {
 
 /// Phase of the lobby / game-creation flow.
 enum LobbyPhase {
-  idle,     // Nothing started yet
+  idle, // Nothing started yet
   creating, // Waiting for game_created event
-  joining,  // Waiting for state_snapshot after subscribe_game
-  ready,    // Game created or joined; transition to game screen
+  joining, // Waiting for state_snapshot after subscribe_game
+  ready, // Game created or joined; transition to game screen
   error,
 }
 
@@ -99,19 +120,18 @@ class LobbyState {
     Set<String>? localColors,
     String? errorMessage,
     bool clearError = false,
-  }) =>
-      LobbyState(
-        phase: phase ?? this.phase,
-        mode: mode ?? this.mode,
-        scoring: scoring ?? this.scoring,
-        localPlayerId: localPlayerId ?? this.localPlayerId,
-        colorToPlayerId: colorToPlayerId ?? this.colorToPlayerId,
-        playerNames: playerNames ?? this.playerNames,
-        gameName: gameName ?? this.gameName,
-        gameId: gameId ?? this.gameId,
-        localColors: localColors ?? this.localColors,
-        errorMessage: clearError ? null : errorMessage ?? this.errorMessage,
-      );
+  }) => LobbyState(
+    phase: phase ?? this.phase,
+    mode: mode ?? this.mode,
+    scoring: scoring ?? this.scoring,
+    localPlayerId: localPlayerId ?? this.localPlayerId,
+    colorToPlayerId: colorToPlayerId ?? this.colorToPlayerId,
+    playerNames: playerNames ?? this.playerNames,
+    gameName: gameName ?? this.gameName,
+    gameId: gameId ?? this.gameId,
+    localColors: localColors ?? this.localColors,
+    errorMessage: clearError ? null : errorMessage ?? this.errorMessage,
+  );
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -140,14 +160,12 @@ class LobbyNotifier extends StateNotifier<LobbyState> {
 
   void setScoring(String scoring) => state = state.copyWith(scoring: scoring);
 
-  void setLocalPlayerId(String id) =>
-      state = state.copyWith(localPlayerId: id);
+  void setLocalPlayerId(String id) => state = state.copyWith(localPlayerId: id);
 
   void setPlayerNames(Map<String, String> names) =>
       state = state.copyWith(playerNames: names);
 
-  void setGameName(String name) =>
-      state = state.copyWith(gameName: name);
+  void setGameName(String name) => state = state.copyWith(gameName: name);
 
   // ── Actions ─────────────────────────────────────────────────────────────────
 
@@ -163,10 +181,11 @@ class LobbyNotifier extends StateNotifier<LobbyState> {
     final mode = state.mode;
     final localId = state.localPlayerId;
 
-    final localColors = colorToPlayerId.entries
-        .where((e) => e.value == localId)
-        .map((e) => e.key)
-        .toSet();
+    final localColors =
+        colorToPlayerId.entries
+            .where((e) => e.value == localId)
+            .map((e) => e.key)
+            .toSet();
 
     state = state.copyWith(
       phase: LobbyPhase.creating,
@@ -192,12 +211,19 @@ class LobbyNotifier extends StateNotifier<LobbyState> {
           scoring: state.scoring,
         );
       case GameModeOption.threePlayer:
+        // The engine requires exactly 3 players in the shared-green rotation
+        // cycle (one per owned color). Green is played in turns: blue → yellow
+        // → red → blue → …
         _repo.createThreePlayerGame(
           gameId: gameId,
           bluePlayerId: colorToPlayerId['blue'] ?? '',
           yellowPlayerId: colorToPlayerId['yellow'] ?? '',
           redPlayerId: colorToPlayerId['red'] ?? '',
-          sharedGreenPlayers: [colorToPlayerId['green'] ?? ''],
+          sharedGreenPlayers: [
+            colorToPlayerId['blue'] ?? '',
+            colorToPlayerId['yellow'] ?? '',
+            colorToPlayerId['red'] ?? '',
+          ],
           scoring: state.scoring,
         );
       case GameModeOption.fourPlayer:

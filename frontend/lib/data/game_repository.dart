@@ -93,10 +93,7 @@ class GameRepository {
       'mode': 'duo',
       'scoring': 'advanced', // Duo is always advanced
       'first_color': firstColor,
-      'players': {
-        'black': blackPlayerId,
-        'white': whitePlayerId,
-      },
+      'players': {'black': blackPlayerId, 'white': whitePlayerId},
     });
   }
 

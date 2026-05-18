@@ -50,8 +50,9 @@ final gameRepositoryProvider = Provider<GameRepository>((ref) {
 // ──────────────────────────────────────────────────────────────────────────────
 
 /// Provides the [LobbyNotifier] that manages game-creation / join state.
-final lobbyNotifierProvider =
-    StateNotifierProvider<LobbyNotifier, LobbyState>((ref) {
+final lobbyNotifierProvider = StateNotifierProvider<LobbyNotifier, LobbyState>((
+  ref,
+) {
   final ws = ref.watch(webSocketServiceProvider);
   final repo = ref.watch(gameRepositoryProvider);
   return LobbyNotifier(ws, repo);
@@ -61,19 +62,22 @@ final lobbyNotifierProvider =
 ///
 /// Family parameter: the `game_id` string, so multiple simultaneous game
 /// states are theoretically supported.
-final gameNotifierProvider = StateNotifierProvider.family<GameNotifier,
-    GameNotifierState, String>((ref, gameId) {
-  final ws = ref.watch(webSocketServiceProvider);
-  final repo = ref.watch(gameRepositoryProvider);
-  return GameNotifier(ws, repo, gameId);
-});
+final gameNotifierProvider =
+    StateNotifierProvider.family<GameNotifier, GameNotifierState, String>((
+      ref,
+      gameId,
+    ) {
+      final ws = ref.watch(webSocketServiceProvider);
+      final repo = ref.watch(gameRepositoryProvider);
+      return GameNotifier(ws, repo, gameId);
+    });
 
 /// Provides the piece-selection notifier that tracks which piece is currently
 /// selected and its orientation.
 final pieceSelectionProvider =
     StateNotifierProvider<PieceSelectionNotifier, PieceSelectionState>((ref) {
-  return PieceSelectionNotifier();
-});
+      return PieceSelectionNotifier();
+    });
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Derived / convenience providers
