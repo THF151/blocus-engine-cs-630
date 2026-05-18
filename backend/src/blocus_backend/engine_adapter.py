@@ -124,6 +124,12 @@ class ClassicEngineAdapter:
             "board_counts": [
                 {"color": color.value, "count": count} for color, count in state.board_counts()
             ],
+            # Full cell-level snapshot so the frontend can render the board
+            # without tracking every move incrementally.
+            "board_cells": [
+                {"row": cell.row, "col": cell.col, "color": cell.color.value}
+                for cell in state.board.occupied
+            ],
         }
         shared_color_turn_index = _shared_color_turn_index(state)
         if shared_color_turn_index is not None:
