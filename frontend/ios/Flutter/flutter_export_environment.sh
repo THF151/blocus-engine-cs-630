@@ -1,7 +1,7 @@
 #!/bin/sh
 # This is a generated file; do not edit or check into version control.
-export "FLUTTER_ROOT=/opt/homebrew/share/flutter"
-export "FLUTTER_APPLICATION_PATH=/Users/tobias/PycharmProjects/blocus-engine-cs-630/frontend"
+export "FLUTTER_ROOT=/usr/local/share/flutter"
+export "FLUTTER_APPLICATION_PATH=/Users/stephanherbert/UniMannnhein/FSS2026/Generative SE/blocus-engine-cs-630/frontend"
 export "COCOAPODS_PARALLEL_CODE_SIGN=true"
 export "FLUTTER_TARGET=lib/main.dart"
 export "FLUTTER_BUILD_DIR=build"

@@ -9,8 +9,8 @@ from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 
 from blocus_backend.engine_adapter import ClassicEngineAdapter
-from blocus_backend.event_bus import GameEventBus, RedisGameEventBus
-from blocus_backend.repository import GameRepository, RedisGameRepository
+from blocus_backend.event_bus import GameEventBus, InMemoryGameEventBus, RedisGameEventBus
+from blocus_backend.repository import GameRepository, InMemoryGameRepository, RedisGameRepository
 from blocus_backend.service import GameService
 from blocus_backend.websocket import ConnectionManager, websocket_endpoint
 
@@ -28,8 +28,15 @@ def create_app(
     event_bus: GameEventBus | None = None,
 ) -> FastAPI:
     engine_adapter = engine or ClassicEngineAdapter()
-    game_repository: GameRepository = repository or RedisGameRepository()
-    game_event_bus: GameEventBus = event_bus or RedisGameEventBus()
+    # Use Redis only when BLOCUS_REDIS_URL is explicitly set; otherwise fall
+    # back to in-memory implementations so `make dev` works without Redis.
+    _use_redis = bool(os.getenv("BLOCUS_REDIS_URL"))
+    game_repository: GameRepository = repository or (
+        RedisGameRepository() if _use_redis else InMemoryGameRepository()
+    )
+    game_event_bus: GameEventBus = event_bus or (
+        RedisGameEventBus() if _use_redis else InMemoryGameEventBus()
+    )
     manager = ConnectionManager(game_event_bus)
     service = GameService(
         game_repository,
