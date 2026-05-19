@@ -141,6 +141,7 @@ def test_move_application_is_broadcast_to_subscribed_clients() -> None:
                 "payload": {"game_id": "game-broadcast", "player_id": "player-one"},
             }
         )
+        assert owner.receive_json()["type"] == "player_joined"
         assert owner.receive_json()["type"] == "state_snapshot"
 
         with client.websocket_connect("/ws") as subscriber:
@@ -176,6 +177,37 @@ def test_move_application_is_broadcast_to_subscribed_clients() -> None:
     assert subscriber_event == owner_event
 
 
+def test_player_joined_is_broadcast_when_player_subscribes() -> None:
+    client = make_client()
+
+    with client.websocket_connect("/ws") as spectator:
+        _create_two_player_game(spectator, "game-player-joined")
+        spectator.send_json(
+            {
+                "action": "subscribe_game",
+                "payload": {"game_id": "game-player-joined"},
+            }
+        )
+        assert spectator.receive_json()["type"] == "state_snapshot"
+
+        with client.websocket_connect("/ws") as player:
+            player.send_json(
+                {
+                    "action": "subscribe_game",
+                    "payload": {"game_id": "game-player-joined", "player_id": "player-one"},
+                }
+            )
+            spectator_event = spectator.receive_json()
+            assert player.receive_json()["type"] == "player_joined"
+            player_snapshot = player.receive_json()
+
+    assert spectator_event["type"] == "player_joined"
+    assert spectator_event["game_id"] == "game-player-joined"
+    assert spectator_event["player_id"] == "player-one"
+    assert "state" in spectator_event
+    assert player_snapshot["type"] == "state_snapshot"
+
+
 def test_move_application_is_broadcast_across_connection_managers() -> None:
     repository = InMemoryGameRepository()
     event_bus = InMemoryGameEventBus()
@@ -206,6 +238,7 @@ def test_move_application_is_broadcast_across_connection_managers() -> None:
                 "payload": {"game_id": "game-cross-worker", "player_id": "player-one"},
             }
         )
+        assert owner.receive_json()["type"] == "player_joined"
         assert owner.receive_json()["type"] == "state_snapshot"
 
         with subscriber_client.websocket_connect("/ws") as subscriber:
@@ -495,6 +528,7 @@ def test_place_move_with_mismatched_player_id_returns_player_mismatch() -> None:
                 "payload": {"game_id": "game-mismatch", "player_id": "player-one"},
             }
         )
+        assert ws.receive_json()["type"] == "player_joined"
         assert ws.receive_json()["type"] == "state_snapshot"
 
         ws.send_json(
@@ -660,6 +694,7 @@ def test_seat_takeover_evicts_existing_connection() -> None:
                 "payload": {"game_id": "game-takeover", "player_id": "player-one"},
             }
         )
+        assert first.receive_json()["type"] == "player_joined"
         assert first.receive_json()["type"] == "state_snapshot"
 
         with client.websocket_connect("/ws") as second:
@@ -670,6 +705,7 @@ def test_seat_takeover_evicts_existing_connection() -> None:
                 }
             )
             kicked = first.receive_json()
+            assert second.receive_json()["type"] == "player_joined"
             second_snapshot = second.receive_json()
 
             assert kicked["type"] == "kicked"

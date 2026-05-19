@@ -291,6 +291,7 @@ All share the same `state` payload (the current state view). The
     "turn_order": ["red", "green", "blue", "yellow"],
     "occupied_count": 12,
     "board_counts": [{"color": "blue", "count": 3}, ...],
+    "board_cells": [{"row": 0, "col": 0, "color": "blue"}, ...], // all occupied cells
     "shared_color_turn_index": 1     // only present in three_player
   },
   "response": "move applied"         // move_applied/pass_applied/game_finished only
@@ -300,6 +301,23 @@ All share the same `state` payload (the current state view). The
 - `move_applied` becomes `game_finished` (same payload shape) on the move
   that ends the game.
 - `game_joined` is emitted on `attach_ai`.
+
+### `player_joined`
+
+Broadcast to all subscribers when a player claims a seat via `subscribe_game`
+with a `player_id`. Allows lobby UIs to show who has joined without polling.
+
+```json
+{
+  "type": "player_joined",
+  "game_id": "game-42",
+  "player_id": "alice",
+  "state": { ... }
+}
+```
+
+The joining player also receives this broadcast, followed by a unicast
+`state_snapshot`. Clients may use whichever they prefer.
 
 ### `legal_moves`
 

@@ -205,7 +205,7 @@ def _scoring_mode(be: Any, value: str) -> Any:
 def _shared_color_turn_index(state: Any) -> int | None:
     try:
         data = json.loads(str(state.to_json()))
-    except TypeError, ValueError:
+    except (TypeError, ValueError):
         return None
 
     if not isinstance(data, dict):
