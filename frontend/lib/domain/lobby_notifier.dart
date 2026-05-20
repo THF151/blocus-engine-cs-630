@@ -1,9 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uuid/uuid.dart';
 
 import '../data/game_repository.dart';
+import '../data/models/saved_game.dart';
 import '../data/models/ws_message.dart';
+import '../data/preferences_service.dart';
 import '../data/websocket_service.dart';
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -142,9 +145,10 @@ class LobbyState {
 class LobbyNotifier extends StateNotifier<LobbyState> {
   final WebSocketService _ws;
   final GameRepository _repo;
+  final PreferencesService _prefs;
   StreamSubscription<WsMessage>? _sub;
 
-  LobbyNotifier(this._ws, this._repo) : super(const LobbyState()) {
+  LobbyNotifier(this._ws, this._repo, this._prefs) : super(const LobbyState()) {
     _sub = _ws.messages.listen(_handleMessage);
   }
 
@@ -258,6 +262,107 @@ class LobbyNotifier extends StateNotifier<LobbyState> {
     await _ws.connect(serverUrl);
   }
 
+  /// Creates a game entry in local persistence without calling the backend.
+  ///
+  /// [mode] and [scoring] are read from the current notifier state so the
+  /// caller only needs to set them via [setMode] / [setScoring] beforehand.
+  /// Returns the newly generated game ID.
+  String createLocalGame({
+    required String creatorName,
+    required String gameName,
+  }) {
+    const uuid = Uuid();
+    final gameId = uuid.v4();
+    final mode = state.mode;
+    final scoring = mode == GameModeOption.duo ? 'advanced' : state.scoring;
+
+    final slots = _slotsForMode(mode);
+    final players = {
+      for (final s in slots) s: '',
+      slots[0]: creatorName.trim(), // creator in first slot
+    };
+
+    final saved = SavedGame(
+      gameId: gameId,
+      gameName: gameName.trim(),
+      mode: mode.backendValue,
+      scoring: scoring,
+      players: players,
+      createdAt: DateTime.now(),
+    );
+    _prefs.upsertGame(saved);
+    return gameId;
+  }
+
+  /// Connects to [serverUrl], sets up state from [savedGame] and
+  /// [finalSlotNames], then triggers the actual backend game-creation call.
+  ///
+  /// [finalSlotNames] maps each colour slot to the display name that should
+  /// occupy it (empty string → AI player).
+  Future<void> startGame({
+    required SavedGame savedGame,
+    required String localPlayerName,
+    required Map<String, String> finalSlotNames,
+    required String serverUrl,
+  }) async {
+    const uuid = Uuid();
+    final Map<String, String> colorToPlayerId = {};
+    final Map<String, String> playerNames = {};
+    String? localId;
+    int aiCount = 0;
+
+    for (final entry in finalSlotNames.entries) {
+      final slot = entry.key;
+      final name = entry.value.trim();
+      if (name.isNotEmpty && name == localPlayerName && localId == null) {
+        localId = uuid.v4();
+        colorToPlayerId[slot] = localId;
+        playerNames[localId] = name;
+      } else if (name.isNotEmpty) {
+        final pid = uuid.v4();
+        colorToPlayerId[slot] = pid;
+        playerNames[pid] = name;
+      } else {
+        aiCount++;
+        final aiId = uuid.v4();
+        colorToPlayerId[slot] = aiId;
+        playerNames[aiId] = 'AI Player $aiCount';
+      }
+    }
+
+    localId ??= uuid.v4(); // fallback: local player not found in any slot
+
+    // Three-player: shared green colour is controlled by the local player.
+    if (savedGame.mode == 'three_player') {
+      colorToPlayerId['green'] = localId;
+    }
+
+    final modeEnum = GameModeOption.values.firstWhere(
+      (m) => m.backendValue == savedGame.mode,
+      orElse: () => GameModeOption.fourPlayer,
+    );
+
+    setMode(modeEnum);
+    setScoring(savedGame.scoring);
+    setGameName(savedGame.gameName);
+    setLocalPlayerId(localId);
+    setPlayerNames(playerNames);
+
+    await connectToServer(serverUrl);
+
+    final firstColor = switch (savedGame.mode) {
+      'duo' => 'black',
+      'four_player' => 'blue',
+      _ => null,
+    };
+
+    createGame(
+      gameId: savedGame.gameId,
+      colorToPlayerId: colorToPlayerId,
+      firstColor: firstColor,
+    );
+  }
+
   /// Resets the lobby to its initial state (e.g. after returning to home).
   void reset() => state = const LobbyState();
 
@@ -285,6 +390,15 @@ class LobbyNotifier extends StateNotifier<LobbyState> {
         break;
     }
   }
+
+  // ── Helpers ──────────────────────────────────────────────────────────────────
+
+  List<String> _slotsForMode(GameModeOption mode) => switch (mode) {
+    GameModeOption.duo => ['black', 'white'],
+    GameModeOption.twoPlayer => ['blue_red', 'yellow_green'],
+    GameModeOption.threePlayer => ['blue', 'yellow', 'red'],
+    GameModeOption.fourPlayer => ['blue', 'yellow', 'red', 'green'],
+  };
 
   @override
   void dispose() {

@@ -4,10 +4,10 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:go_router/go_router.dart';
-import 'package:uuid/uuid.dart';
 
 import '../../core/constants.dart';
 import '../../core/router.dart';
+import '../../data/models/saved_game.dart';
 import '../../data/websocket_service.dart';
 import '../../domain/lobby_notifier.dart';
 import '../../domain/providers.dart';
@@ -16,9 +16,10 @@ import '../../domain/providers.dart';
 ///
 /// Responsibilities:
 /// - Let the user configure the server URL and their player name (persisted).
-/// - Choose a game mode (Duo / Classic 2/3/4-Player) and scoring variant.
-/// - Configure all player slots (opponent names / AI).
-/// - Create a new game **or** join an existing one by entering a game_id.
+/// - **Create Game tab**: choose mode / scoring / name and create a local game
+///   entry (no backend call yet).
+/// - **Join Game tab**: pick a previously created game, assign player slots,
+///   and press "Start Game" to connect to the backend and begin play.
 ///
 /// On success the user is navigated to [GameScreen].
 class HomeScreen extends ConsumerStatefulWidget {
@@ -32,74 +33,187 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
 
-  // Shared fields
+  // ── Shared fields ────────────────────────────────────────────────────────────
   final _serverUrlCtrl = TextEditingController(text: 'ws://localhost:8000/ws');
   final _playerNameCtrl = TextEditingController();
+
+  // ── Create Game fields ───────────────────────────────────────────────────────
   final _gameNameCtrl = TextEditingController();
-
-  // Create-game fields
-  final _p2Ctrl = TextEditingController(); // opponent 2
-  final _p3Ctrl = TextEditingController(); // opponent 3
-  final _p4Ctrl = TextEditingController(); // opponent 4
-  final _firstColorCtrl = ValueNotifier<String>('blue');
-
-  // Join-game field
-  final _joinGameIdCtrl = TextEditingController();
-
   final _createFormKey = GlobalKey<FormState>();
-  final _joinFormKey = GlobalKey<FormState>();
+
+  // ── Join Game state ──────────────────────────────────────────────────────────
+  List<SavedGame> _savedGames = [];
+  SavedGame? _selectedGame;
+  List<TextEditingController> _slotControllers = [];
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    // Pre-fill persisted player name
+    _tabController.addListener(_onTabChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final prefs = ref.read(preferencesServiceProvider);
       _playerNameCtrl.text = prefs.playerName;
       _serverUrlCtrl.text = prefs.serverUrl;
+      setState(() => _savedGames = prefs.savedGames);
     });
   }
 
   @override
   void dispose() {
-    _tabController.dispose();
+    _tabController
+      ..removeListener(_onTabChanged)
+      ..dispose();
     _serverUrlCtrl.dispose();
     _playerNameCtrl.dispose();
     _gameNameCtrl.dispose();
-    _p2Ctrl.dispose();
-    _p3Ctrl.dispose();
-    _p4Ctrl.dispose();
-    _firstColorCtrl.dispose();
-    _joinGameIdCtrl.dispose();
+    for (final c in _slotControllers) {
+      c.dispose();
+    }
     super.dispose();
   }
 
-  // ── Lifecycle ───────────────────────────────────────────────────────────────
+  void _onTabChanged() {
+    if (!_tabController.indexIsChanging && _tabController.index == 1) {
+      // Refresh saved-games list whenever the Join tab becomes active.
+      final fresh = ref.read(preferencesServiceProvider).savedGames;
+      setState(() {
+        _savedGames = fresh;
+        // Keep selected game reference in sync with refreshed list.
+        if (_selectedGame != null) {
+          final match = fresh.where((g) => g.gameId == _selectedGame!.gameId);
+          if (match.isEmpty) {
+            _selectedGame = null;
+            for (final c in _slotControllers) {
+              c.dispose();
+            }
+            _slotControllers = [];
+          }
+        }
+      });
+    }
+  }
+
+  void _onGameSelected(SavedGame? game) {
+    for (final c in _slotControllers) {
+      c.dispose();
+    }
+    if (game == null) {
+      setState(() {
+        _selectedGame = null;
+        _slotControllers = [];
+      });
+      return;
+    }
+
+    final slots = game.slots;
+    final playerName = _playerNameCtrl.text.trim();
+
+    // If the current player is already the creator (slot 0), don't pre-fill
+    // their name into any other slot — they don't need a second entry.
+    final creatorName = game.players[slots[0]] ?? '';
+    final playerIsCreator = playerName.isNotEmpty && playerName == creatorName;
+    bool localPlaced = false;
+
+    final controllers = List.generate(slots.length, (i) {
+      final slot = slots[i];
+      final existing = game.players[slot] ?? '';
+      final String initial;
+      if (i == 0) {
+        // First slot = creator (read-only, always from SavedGame).
+        initial = existing;
+      } else if (existing.isNotEmpty) {
+        initial = existing;
+      } else if (!localPlaced && !playerIsCreator) {
+        // Pre-fill the first free slot with the current player's name,
+        // but only when this player is not already the creator.
+        initial = playerName;
+        localPlaced = true;
+      } else {
+        initial = '';
+      }
+      return TextEditingController(text: initial);
+    });
+
+    setState(() {
+      _selectedGame = game;
+      _slotControllers = controllers;
+    });
+  }
+
+  // ── Handlers ─────────────────────────────────────────────────────────────────
+
+  Future<void> _createLocalGame() async {
+    if (!_createFormKey.currentState!.validate()) return;
+
+    final prefs = ref.read(preferencesServiceProvider);
+    final playerName = _playerNameCtrl.text.trim();
+
+    try {
+      await prefs.setServerUrl(_serverUrlCtrl.text.trim());
+      await prefs.setPlayerName(playerName);
+    } catch (_) {}
+
+    ref
+        .read(lobbyNotifierProvider.notifier)
+        .createLocalGame(
+          creatorName: playerName,
+          gameName: _gameNameCtrl.text.trim(),
+        );
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Game created! Switch to "Join Game" to start it.'),
+          duration: Duration(seconds: 3),
+        ),
+      );
+      setState(() {
+        _savedGames = ref.read(preferencesServiceProvider).savedGames;
+        _gameNameCtrl.clear();
+      });
+    }
+  }
+
+  Future<void> _startGame() async {
+    if (_selectedGame == null) return;
+
+    final playerName = _playerNameCtrl.text.trim();
+    final slots = _selectedGame!.slots;
+
+    final Map<String, String> finalSlotNames = {
+      for (int i = 0; i < slots.length && i < _slotControllers.length; i++)
+        slots[i]: _slotControllers[i].text.trim(),
+    };
+
+    try {
+      await ref
+          .read(preferencesServiceProvider)
+          .setServerUrl(_serverUrlCtrl.text.trim());
+      await ref.read(preferencesServiceProvider).setPlayerName(playerName);
+    } catch (_) {}
+
+    await ref
+        .read(lobbyNotifierProvider.notifier)
+        .startGame(
+          savedGame: _selectedGame!,
+          localPlayerName: playerName,
+          finalSlotNames: finalSlotNames,
+          serverUrl: _serverUrlCtrl.text.trim(),
+        );
+  }
+
+  // ── Build ─────────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     final lobby = ref.watch(lobbyNotifierProvider);
 
-    // Navigate to game screen once lobby is ready.
-    // Guard with prev?.phase != ready so that other field changes (setGameName,
-    // setLocalPlayerId, …) while phase is already ready don't re-trigger
-    // navigation to the previous game.
     ref.listen(lobbyNotifierProvider, (prev, next) {
       if (next.phase == LobbyPhase.ready &&
           prev?.phase != LobbyPhase.ready &&
           next.gameId.isNotEmpty) {
         context.go('$kRouteGame/${next.gameId}');
-      }
-      // Keep the first-colour picker in sync with the available colours for
-      // the selected mode: reset to the first valid colour whenever the mode
-      // changes so the dropdown never holds a value that isn't in its items.
-      if (prev?.mode != next.mode) {
-        final validColors =
-            next.mode == GameModeOption.duo ? kDuoColors : kClassicColors;
-        if (!validColors.contains(_firstColorCtrl.value)) {
-          _firstColorCtrl.value = validColors.first;
-        }
       }
     });
 
@@ -119,8 +233,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                   const Gap(12),
                   _PlayerNameField(controller: _playerNameCtrl),
                   const Gap(20),
-                  _ModeAndScoringRow(),
-                  const Gap(20),
                   TabBar(
                     controller: _tabController,
                     tabs: const [
@@ -136,17 +248,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                         return _CreateGameTab(
                           formKey: _createFormKey,
                           gameNameCtrl: _gameNameCtrl,
-                          p2Ctrl: _p2Ctrl,
-                          p3Ctrl: _p3Ctrl,
-                          p4Ctrl: _p4Ctrl,
-                          firstColorNotifier: _firstColorCtrl,
-                          onCreate: _onCreateGame,
+                          onCreate: _createLocalGame,
                         );
                       }
                       return _JoinGameTab(
-                        formKey: _joinFormKey,
-                        gameIdCtrl: _joinGameIdCtrl,
-                        onJoin: _onJoinGame,
+                        savedGames: _savedGames,
+                        selectedGame: _selectedGame,
+                        slotControllers: _slotControllers,
+                        onGameSelected: _onGameSelected,
+                        onStart: _startGame,
                       );
                     },
                   ),
@@ -162,96 +272,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       ),
     );
   }
-
-  // ── Handlers ────────────────────────────────────────────────────────────────
-
-  Future<void> _onCreateGame() async {
-    if (!_createFormKey.currentState!.validate()) return;
-
-    final lobbyNotifier = ref.read(lobbyNotifierProvider.notifier);
-    final lobby = ref.read(lobbyNotifierProvider);
-    final mode = lobby.mode;
-    final displayName = _playerNameCtrl.text.trim();
-    const uuid = Uuid();
-    // Engine requires UUID strings as player IDs.
-    final localUuid = uuid.v4();
-    final gameId = uuid.v4();
-
-    // Persist display name + server url
-    try {
-      await ref
-          .read(preferencesServiceProvider)
-          .setServerUrl(_serverUrlCtrl.text.trim());
-      await ref.read(preferencesServiceProvider).setPlayerName(displayName);
-    } catch (_) {}
-
-    lobbyNotifier.setGameName(_gameNameCtrl.text.trim());
-    lobbyNotifier.setLocalPlayerId(localUuid);
-
-    // Connect to server
-    await lobbyNotifier.connectToServer(_serverUrlCtrl.text.trim());
-
-    // Build colour→UUID map. Each non-local slot gets its own fresh UUID
-    // (the engine refuses duplicate or non-UUID player IDs).
-    final ai1 = uuid.v4();
-    final ai2 = uuid.v4();
-    final ai3 = uuid.v4();
-
-    final Map<String, String> slots = switch (mode) {
-      GameModeOption.duo => {'black': localUuid, 'white': ai1},
-      GameModeOption.twoPlayer => {'blue_red': localUuid, 'yellow_green': ai1},
-      GameModeOption.threePlayer => {
-        'blue': localUuid,
-        'yellow': ai1,
-        'red': ai2,
-        'green': localUuid, // shared green defaults to local player
-      },
-      GameModeOption.fourPlayer => {
-        'blue': localUuid,
-        'yellow': ai1,
-        'red': ai2,
-        'green': ai3,
-      },
-    };
-
-    // Build display-name map: local player by name, others as "AI Player N"
-    final Map<String, String> playerNames = {
-      localUuid: displayName.isNotEmpty ? displayName : 'You',
-      ai1: 'AI Player 1',
-      ai2: 'AI Player 2',
-      ai3: 'AI Player 3',
-    };
-    lobbyNotifier.setPlayerNames(playerNames);
-
-    lobbyNotifier.createGame(
-      gameId: gameId,
-      colorToPlayerId: slots,
-      firstColor: _firstColorCtrl.value,
-    );
-  }
-
-  Future<void> _onJoinGame() async {
-    if (!_joinFormKey.currentState!.validate()) return;
-
-    final localId = _playerNameCtrl.text.trim();
-    final gameId = _joinGameIdCtrl.text.trim();
-
-    try {
-      await ref
-          .read(preferencesServiceProvider)
-          .setServerUrl(_serverUrlCtrl.text.trim());
-      await ref.read(preferencesServiceProvider).setPlayerName(localId);
-    } catch (_) {}
-
-    final lobbyNotifier = ref.read(lobbyNotifierProvider.notifier);
-    lobbyNotifier.setLocalPlayerId(localId);
-    await lobbyNotifier.connectToServer(_serverUrlCtrl.text.trim());
-    lobbyNotifier.joinGame(gameId);
-  }
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Sub-widgets
+// Shared sub-widgets
 // ──────────────────────────────────────────────────────────────────────────────
 
 class _Header extends StatelessWidget {
@@ -291,26 +315,20 @@ class _ServerRow extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final connState = ref.watch(connectionStateProvider);
     final isConnected = connState.valueOrNull == WsConnectionState.connected;
-    return Row(
-      children: [
-        Expanded(
-          child: TextFormField(
-            controller: controller,
-            decoration: InputDecoration(
-              labelText: 'Server URL',
-              hintText: 'ws://localhost:8000/ws',
-              prefixIcon: const Icon(Icons.dns_rounded),
-              suffixIcon:
-                  isConnected
-                      ? const Icon(Icons.check_circle, color: Colors.green)
-                      : null,
-              border: const OutlineInputBorder(),
-            ),
-            keyboardType: TextInputType.url,
-            autocorrect: false,
-          ),
-        ),
-      ],
+    return TextFormField(
+      controller: controller,
+      decoration: InputDecoration(
+        labelText: 'Server URL',
+        hintText: 'ws://localhost:8000/ws',
+        prefixIcon: const Icon(Icons.dns_rounded),
+        suffixIcon:
+            isConnected
+                ? const Icon(Icons.check_circle, color: Colors.green)
+                : null,
+        border: const OutlineInputBorder(),
+      ),
+      keyboardType: TextInputType.url,
+      autocorrect: false,
     );
   }
 }
@@ -333,256 +351,6 @@ class _PlayerNameField extends StatelessWidget {
         FilteringTextInputFormatter.deny(RegExp(r'\s')),
         LengthLimitingTextInputFormatter(32),
       ],
-    );
-  }
-}
-
-class _ModeAndScoringRow extends ConsumerWidget {
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final lobby = ref.watch(lobbyNotifierProvider);
-    final notifier = ref.read(lobbyNotifierProvider.notifier);
-
-    return Row(
-      children: [
-        Expanded(
-          flex: 3,
-          child: DropdownButtonFormField<GameModeOption>(
-            isExpanded: true,
-            initialValue: lobby.mode,
-            decoration: const InputDecoration(
-              labelText: 'Mode',
-              border: OutlineInputBorder(),
-            ),
-            items:
-                GameModeOption.values
-                    .map(
-                      (m) => DropdownMenuItem(
-                        value: m,
-                        child: Text(m.displayName),
-                      ),
-                    )
-                    .toList(),
-            onChanged: (m) => m != null ? notifier.setMode(m) : null,
-          ),
-        ),
-        const Gap(12),
-        Expanded(
-          flex: 2,
-          child: DropdownButtonFormField<String>(
-            isExpanded: true,
-            initialValue: lobby.scoring,
-            decoration: const InputDecoration(
-              labelText: 'Scoring',
-              border: OutlineInputBorder(),
-            ),
-            items: [
-              const DropdownMenuItem(value: 'basic', child: Text('Basic')),
-              const DropdownMenuItem(
-                value: 'advanced',
-                child: Text('Advanced'),
-              ),
-            ],
-            onChanged:
-                lobby.mode == GameModeOption.duo
-                    ? null // Duo is always advanced
-                    : (s) => s != null ? notifier.setScoring(s) : null,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-// ── Create-Game tab ──────────────────────────────────────────────────────────
-
-class _CreateGameTab extends ConsumerWidget {
-  final GlobalKey<FormState> formKey;
-  final TextEditingController gameNameCtrl;
-  final TextEditingController p2Ctrl, p3Ctrl, p4Ctrl;
-  final ValueNotifier<String> firstColorNotifier;
-  final VoidCallback onCreate;
-
-  const _CreateGameTab({
-    required this.formKey,
-    required this.gameNameCtrl,
-    required this.p2Ctrl,
-    required this.p3Ctrl,
-    required this.p4Ctrl,
-    required this.firstColorNotifier,
-    required this.onCreate,
-  });
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final lobby = ref.watch(lobbyNotifierProvider);
-    final mode = lobby.mode;
-
-    return Form(
-      key: formKey,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Game name
-          TextFormField(
-            controller: gameNameCtrl,
-            decoration: const InputDecoration(
-              labelText: 'Game Name',
-              hintText: 'e.g. Friday Night Blokus',
-              prefixIcon: Icon(Icons.sports_esports_rounded),
-              border: OutlineInputBorder(),
-            ),
-            inputFormatters: [LengthLimitingTextInputFormatter(48)],
-          ),
-          const Gap(10),
-          // Opponent-slot fields (vary by mode)
-          _opponentField(context, ctrl: p2Ctrl, label: _opponentLabel(mode, 2)),
-          if (mode == GameModeOption.threePlayer ||
-              mode == GameModeOption.fourPlayer) ...[
-            const Gap(10),
-            _opponentField(context, ctrl: p3Ctrl, label: 'Player 3 (Red)'),
-          ],
-          if (mode == GameModeOption.fourPlayer) ...[
-            const Gap(10),
-            _opponentField(context, ctrl: p4Ctrl, label: 'Player 4 (Green)'),
-          ],
-          const Gap(16),
-          // First-colour picker (only for Duo and 4-Player)
-          if (mode == GameModeOption.duo ||
-              mode == GameModeOption.fourPlayer) ...[
-            ValueListenableBuilder<String>(
-              valueListenable: firstColorNotifier,
-              builder: (_, val, _) {
-                final validColors =
-                    mode == GameModeOption.duo ? kDuoColors : kClassicColors;
-                // Guard: if the notifier value isn't valid for the current
-                // mode yet (reset hasn't propagated), fall back to the
-                // first valid color so the assertion never fires.
-                final safeVal =
-                    validColors.contains(val) ? val : validColors.first;
-                return DropdownButtonFormField<String>(
-                  initialValue: safeVal,
-                  decoration: const InputDecoration(
-                    labelText: 'First colour',
-                    border: OutlineInputBorder(),
-                  ),
-                  items:
-                      validColors
-                          .map(
-                            (c) => DropdownMenuItem(
-                              value: c,
-                              child: Row(
-                                children: [
-                                  CircleAvatar(
-                                    radius: 8,
-                                    backgroundColor: colorForPlayer(c),
-                                  ),
-                                  const Gap(8),
-                                  Text(c),
-                                ],
-                              ),
-                            ),
-                          )
-                          .toList(),
-                  onChanged:
-                      (c) => c != null ? firstColorNotifier.value = c : null,
-                );
-              },
-            ),
-            const Gap(16),
-          ],
-          FilledButton.icon(
-            onPressed: lobby.isLoading ? null : onCreate,
-            icon:
-                lobby.isLoading
-                    ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                    : const Icon(Icons.add_circle_rounded),
-            label: const Text('Create Game'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _opponentLabel(GameModeOption mode, int slot) => switch (mode) {
-    GameModeOption.duo => 'Opponent (White) — leave blank for AI',
-    GameModeOption.twoPlayer => 'Opponent (Yellow/Green) — leave blank for AI',
-    _ => 'Player $slot — leave blank for AI',
-  };
-
-  Widget _opponentField(
-    BuildContext context, {
-    required TextEditingController ctrl,
-    required String label,
-  }) => TextFormField(
-    controller: ctrl,
-    decoration: InputDecoration(
-      labelText: label,
-      prefixIcon: const Icon(Icons.person_outline_rounded),
-      border: const OutlineInputBorder(),
-    ),
-    inputFormatters: [
-      FilteringTextInputFormatter.deny(RegExp(r'\s')),
-      LengthLimitingTextInputFormatter(32),
-    ],
-  );
-}
-
-// ── Join-Game tab ────────────────────────────────────────────────────────────
-
-class _JoinGameTab extends ConsumerWidget {
-  final GlobalKey<FormState> formKey;
-  final TextEditingController gameIdCtrl;
-  final VoidCallback onJoin;
-
-  const _JoinGameTab({
-    required this.formKey,
-    required this.gameIdCtrl,
-    required this.onJoin,
-  });
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final lobby = ref.watch(lobbyNotifierProvider);
-
-    return Form(
-      key: formKey,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          TextFormField(
-            controller: gameIdCtrl,
-            decoration: const InputDecoration(
-              labelText: 'Game ID',
-              hintText: 'Paste or type the game ID shared by the host',
-              prefixIcon: Icon(Icons.tag_rounded),
-              border: OutlineInputBorder(),
-            ),
-            validator:
-                (v) =>
-                    (v == null || v.trim().isEmpty)
-                        ? 'Game ID is required'
-                        : null,
-          ),
-          const Gap(16),
-          FilledButton.icon(
-            onPressed: lobby.isLoading ? null : onJoin,
-            icon:
-                lobby.isLoading
-                    ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                    : const Icon(Icons.login_rounded),
-            label: const Text('Join Game'),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -617,5 +385,271 @@ class _ErrorBanner extends StatelessWidget {
         ],
       ),
     ).animate().shake(hz: 2, duration: 400.ms);
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Create Game tab
+// ──────────────────────────────────────────────────────────────────────────────
+
+class _CreateGameTab extends ConsumerWidget {
+  final GlobalKey<FormState> formKey;
+  final TextEditingController gameNameCtrl;
+  final VoidCallback onCreate;
+
+  const _CreateGameTab({
+    required this.formKey,
+    required this.gameNameCtrl,
+    required this.onCreate,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final lobby = ref.watch(lobbyNotifierProvider);
+    final notifier = ref.read(lobbyNotifierProvider.notifier);
+
+    return Form(
+      key: formKey,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Mode
+          DropdownButtonFormField<GameModeOption>(
+            isExpanded: true,
+            initialValue: lobby.mode,
+            decoration: const InputDecoration(
+              labelText: 'Mode',
+              border: OutlineInputBorder(),
+            ),
+            items:
+                GameModeOption.values
+                    .map(
+                      (m) => DropdownMenuItem(
+                        value: m,
+                        child: Text(m.displayName),
+                      ),
+                    )
+                    .toList(),
+            onChanged: (m) => m != null ? notifier.setMode(m) : null,
+          ),
+          const Gap(10),
+          // Scoring
+          DropdownButtonFormField<String>(
+            isExpanded: true,
+            initialValue: lobby.scoring,
+            decoration: const InputDecoration(
+              labelText: 'Scoring',
+              border: OutlineInputBorder(),
+            ),
+            items: const [
+              DropdownMenuItem(value: 'basic', child: Text('Basic')),
+              DropdownMenuItem(value: 'advanced', child: Text('Advanced')),
+            ],
+            onChanged:
+                lobby.mode == GameModeOption.duo
+                    ? null // Duo is always advanced
+                    : (s) => s != null ? notifier.setScoring(s) : null,
+          ),
+          const Gap(10),
+          // Game name
+          TextFormField(
+            controller: gameNameCtrl,
+            decoration: const InputDecoration(
+              labelText: 'Game Name',
+              hintText: 'e.g. Friday Night Blokus',
+              prefixIcon: Icon(Icons.sports_esports_rounded),
+              border: OutlineInputBorder(),
+            ),
+            inputFormatters: [LengthLimitingTextInputFormatter(48)],
+          ),
+          const Gap(16),
+          FilledButton.icon(
+            onPressed: onCreate,
+            icon: const Icon(Icons.add_circle_rounded),
+            label: const Text('Create Game'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Join Game tab
+// ──────────────────────────────────────────────────────────────────────────────
+
+class _JoinGameTab extends ConsumerWidget {
+  final List<SavedGame> savedGames;
+  final SavedGame? selectedGame;
+  final List<TextEditingController> slotControllers;
+  final ValueChanged<SavedGame?> onGameSelected;
+  final VoidCallback onStart;
+
+  const _JoinGameTab({
+    required this.savedGames,
+    required this.selectedGame,
+    required this.slotControllers,
+    required this.onGameSelected,
+    required this.onStart,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final lobby = ref.watch(lobbyNotifierProvider);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Game selector
+        DropdownButtonFormField<SavedGame>(
+          initialValue: selectedGame,
+          isExpanded: true,
+          decoration: const InputDecoration(
+            labelText: 'Select Game',
+            prefixIcon: Icon(Icons.sports_esports_rounded),
+            border: OutlineInputBorder(),
+          ),
+          hint:
+              savedGames.isEmpty
+                  ? const Text('No games yet – create one first')
+                  : const Text('Choose a game to join'),
+          items:
+              savedGames
+                  .map(
+                    (g) => DropdownMenuItem(
+                      value: g,
+                      child: Text(
+                        g.displayLabel,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  )
+                  .toList(),
+          onChanged: onGameSelected,
+        ),
+
+        // Details + slot rows (only when a game is selected)
+        if (selectedGame != null) ...[
+          const Gap(12),
+          // Read-only game info
+          Row(
+            children: [
+              Expanded(
+                child: _ReadOnlyField(
+                  label: 'Mode',
+                  value: selectedGame!.modeDisplayName,
+                ),
+              ),
+              const Gap(8),
+              Expanded(
+                child: _ReadOnlyField(
+                  label: 'Scoring',
+                  value:
+                      selectedGame!.scoring == 'advanced'
+                          ? 'Advanced'
+                          : 'Basic',
+                ),
+              ),
+            ],
+          ),
+          const Gap(12),
+          // Player slot rows
+          ...List.generate(selectedGame!.slots.length, (i) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: _SlotRow(
+                slotKey: selectedGame!.slots[i],
+                controller: slotControllers[i],
+                isReadOnly: i == 0, // creator slot is read-only
+              ),
+            );
+          }),
+        ],
+
+        const Gap(16),
+        FilledButton.icon(
+          onPressed: (lobby.isLoading || selectedGame == null) ? null : onStart,
+          icon:
+              lobby.isLoading
+                  ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                  : const Icon(Icons.play_arrow_rounded),
+          label: const Text('Start Game'),
+        ),
+      ],
+    );
+  }
+}
+
+// ── Shared helper widgets ────────────────────────────────────────────────────
+
+class _ReadOnlyField extends StatelessWidget {
+  final String label;
+  final String value;
+  const _ReadOnlyField({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return InputDecorator(
+      decoration: InputDecoration(
+        labelText: label,
+        border: const OutlineInputBorder(),
+        filled: true,
+      ),
+      child: Text(value, style: Theme.of(context).textTheme.bodyMedium),
+    );
+  }
+}
+
+class _SlotRow extends StatelessWidget {
+  final String slotKey;
+  final TextEditingController controller;
+  final bool isReadOnly;
+
+  const _SlotRow({
+    required this.slotKey,
+    required this.controller,
+    this.isReadOnly = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // For compound slots like 'blue_red' use the first colour for the badge.
+    final primaryColor = slotKey.split('_').first;
+    final color = colorForPlayer(primaryColor);
+
+    final label = switch (slotKey) {
+      'black' => 'Black',
+      'white' => 'White',
+      'blue_red' => 'Blue / Red',
+      'yellow_green' => 'Yellow / Green',
+      'blue' => 'Blue',
+      'yellow' => 'Yellow',
+      'red' => 'Red',
+      'green' => 'Green',
+      _ => slotKey,
+    };
+
+    return TextFormField(
+      controller: controller,
+      readOnly: isReadOnly,
+      decoration: InputDecoration(
+        labelText:
+            '$label${isReadOnly ? '  (host)' : '  – leave blank for AI'}',
+        prefixIcon: Padding(
+          padding: const EdgeInsets.all(12),
+          child: CircleAvatar(radius: 8, backgroundColor: color),
+        ),
+        border: const OutlineInputBorder(),
+        filled: isReadOnly,
+      ),
+      inputFormatters: [
+        FilteringTextInputFormatter.deny(RegExp(r'\s')),
+        LengthLimitingTextInputFormatter(32),
+      ],
+    );
   }
 }

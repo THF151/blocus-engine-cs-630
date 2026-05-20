@@ -1,8 +1,13 @@
+import 'dart:convert';
+
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'models/saved_game.dart';
 
 // Storage keys
 const String _kServerUrl = 'blocus_server_url';
 const String _kPlayerName = 'blocus_player_name';
+const String _kSavedGames = 'blocus_saved_games';
 
 /// Thin wrapper around [SharedPreferences] for persisting user settings.
 ///
@@ -42,6 +47,46 @@ class PreferencesService {
     final trimmed = name.trim();
     if (trimmed.isEmpty) throw ArgumentError('Player name must not be empty.');
     await _prefs.setString(_kPlayerName, trimmed);
+  }
+
+  // ── Saved games ─────────────────────────────────────────────────────────────
+
+  /// Returns all locally persisted game entries, newest first.
+  List<SavedGame> get savedGames {
+    final raw = _prefs.getString(_kSavedGames);
+    if (raw == null) return [];
+    try {
+      final list = jsonDecode(raw) as List;
+      return list
+          .map((e) => SavedGame.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Inserts or updates [game] in the persisted list.
+  Future<void> upsertGame(SavedGame game) async {
+    final games = savedGames;
+    final idx = games.indexWhere((g) => g.gameId == game.gameId);
+    if (idx >= 0) {
+      games[idx] = game;
+    } else {
+      games.insert(0, game); // newest first
+    }
+    await _prefs.setString(
+      _kSavedGames,
+      jsonEncode(games.map((g) => g.toJson()).toList()),
+    );
+  }
+
+  /// Removes the game with [gameId] from the persisted list.
+  Future<void> deleteGame(String gameId) async {
+    final games = savedGames.where((g) => g.gameId != gameId).toList();
+    await _prefs.setString(
+      _kSavedGames,
+      jsonEncode(games.map((g) => g.toJson()).toList()),
+    );
   }
 
   // ── Factory ─────────────────────────────────────────────────────────────────

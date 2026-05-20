@@ -10,7 +10,6 @@ import '../../domain/lobby_notifier.dart';
 import '../../domain/providers.dart';
 import '../widgets/board/game_board.dart';
 import '../widgets/game/player_info_panel.dart';
-import '../widgets/game/turn_indicator.dart';
 import '../widgets/pieces/piece_orientation_selector.dart';
 import '../widgets/pieces/piece_tray.dart';
 import '../widgets/shared/connection_status_banner.dart';
@@ -146,7 +145,13 @@ class _GameScreenState extends ConsumerState<GameScreen> {
 // Layout
 // ──────────────────────────────────────────────────────────────────────────────
 
-/// Unified layout: board on the left, side panel (players + pieces) on the right.
+/// Full-screen column layout: player strip → board → bottom tray.
+///
+/// The active player is communicated by the thick-bordered card in the player
+/// strip above the board, so no separate turn banner is needed.
+/// The game board fills all available vertical space between the player strip
+/// and the bottom piece tray, giving it the maximum possible size on every
+/// screen dimension.
 class _GameLayout extends StatelessWidget {
   final String gameId;
   final LobbyState lobby;
@@ -160,36 +165,67 @@ class _GameLayout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final panelWidth = MediaQuery.sizeOf(context).width < 500 ? 160.0 : 240.0;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Board fills remaining width
+        // Player info strip – always visible above the board.
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
+          child: _PlayerInfoRow(gameId: gameId),
+        ),
+        // No-moves hint sits directly below the player strip.
+        _NoMovesHint(gameId: gameId),
+        // Board takes all remaining vertical space.
         Expanded(
           child: Padding(
-            padding: const EdgeInsets.all(8),
+            padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
             child: GameBoard(gameId: gameId),
           ),
         ),
-        // Side panel: players → turn indicator → piece selector → piece list
-        SizedBox(
-          width: panelWidth,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const SizedBox(height: 8),
-              _PlayerInfoRow(gameId: gameId),
-              const Gap(4),
-              TurnIndicator(gameId: gameId),
-              _NoMovesHint(gameId: gameId),
-              const Gap(4),
-              const PieceOrientationSelector(),
-              const Gap(4),
-              Expanded(child: PieceTray(gameId: gameId)),
-            ],
-          ),
-        ),
+        // Piece tray + orientation selector pinned to the bottom.
+        _BottomTray(gameId: gameId),
       ],
+    );
+  }
+}
+
+/// Bottom section of the game screen.
+///
+/// Structure (top to bottom):
+/// 1. [PieceOrientationSelector] row – slides in with [AnimatedSize] only
+///    when a piece is selected, invisible otherwise.
+/// 2. Horizontally scrollable piece tray – always visible.
+class _BottomTray extends StatelessWidget {
+  final String gameId;
+
+  const _BottomTray({required this.gameId});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return SafeArea(
+      top: false,
+      left: false,
+      right: false,
+      child: Container(
+        decoration: BoxDecoration(
+          color: cs.surfaceContainer,
+          border: Border(top: BorderSide(color: cs.outlineVariant, width: 1)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Orientation selector row – animates in when a piece is selected.
+            AnimatedSize(
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeInOut,
+              child: const PieceOrientationSelector(),
+            ),
+            // Piece tray – always visible, needs a bounded height for ListView.
+            SizedBox(height: 108, child: PieceTray(gameId: gameId)),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -198,7 +234,11 @@ class _GameLayout extends StatelessWidget {
 // Sub-widgets
 // ──────────────────────────────────────────────────────────────────────────────
 
-/// Shows all players' info panels stacked vertically with a scroll if needed.
+/// Horizontal strip showing one card per player above the board.
+///
+/// Active player cards use a thick border. In three-player mode a player
+/// whose turn it is to move the shared *green* colour gets an additional
+/// green accent border on top of their primary colour border.
 class _PlayerInfoRow extends ConsumerWidget {
   final String gameId;
   const _PlayerInfoRow({required this.gameId});
@@ -209,39 +249,58 @@ class _PlayerInfoRow extends ConsumerWidget {
     final turnOrder = gameState.gameState?.turnOrder ?? [];
     final lobby = ref.read(lobbyNotifierProvider);
 
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxHeight: 200),
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            for (int i = 0; i < turnOrder.length; i++) ...[
-              if (i > 0) const SizedBox(height: 4),
-              () {
-                final color = turnOrder[i];
-                // In three-player mode 'green' is a shared rotation color,
-                // not a separate player — omit its panel entirely.
-                if (lobby.mode == GameModeOption.threePlayer &&
-                    color == 'green') {
-                  return const SizedBox.shrink();
+    final currentColor = gameState.gameState?.currentColor;
+    final sharedIdx = gameState.gameState?.sharedColorTurnIndex;
+
+    final visibleColors = [
+      for (final color in turnOrder)
+        if (!(lobby.mode == GameModeOption.threePlayer && color == 'green'))
+          color,
+    ];
+
+    if (visibleColors.isEmpty) return const SizedBox.shrink();
+
+    return Row(
+      children: [
+        for (int i = 0; i < visibleColors.length; i++) ...[
+          if (i > 0) const SizedBox(width: 4),
+          Expanded(
+            child: () {
+              final color = visibleColors[i];
+              final playerId = lobby.colorToPlayerId[color] ?? color;
+              final displayName =
+                  lobby.playerNames[playerId] ??
+                  playerId.substring(0, playerId.length.clamp(0, 8));
+
+              // Determine whether this player card is active and, if so, which
+              // colour they are currently playing (may differ from their own
+              // in three-player mode when the shared green rotates to them).
+              String? currentTurnColor;
+              if (currentColor == color) {
+                // Playing their own colour.
+                currentTurnColor = color;
+              } else if (currentColor == 'green' &&
+                  lobby.mode == GameModeOption.threePlayer &&
+                  sharedIdx != null &&
+                  visibleColors.isNotEmpty) {
+                // Green rotation: visibleColors[sharedIdx % n] is the owner.
+                final ownerIndex = sharedIdx % visibleColors.length;
+                if (ownerIndex == i) {
+                  currentTurnColor = 'green';
                 }
-                final playerId = lobby.colorToPlayerId[color] ?? color;
-                final displayName =
-                    lobby.playerNames[playerId] ??
-                    playerId.substring(0, playerId.length.clamp(0, 8));
-                final isActive = gameState.gameState?.currentColor == color;
-                return PlayerInfoPanel(
-                  color: color,
-                  playerId: displayName,
-                  cellCount: gameState.gameState?.countForColor(color) ?? 0,
-                  isActive: isActive,
-                );
-              }(),
-            ],
-          ],
-        ),
-      ),
+              }
+
+              return PlayerInfoPanel(
+                color: color,
+                playerId: displayName,
+                cellCount: gameState.gameState?.countForColor(color) ?? 0,
+                isActive: currentTurnColor != null,
+                currentTurnColor: currentTurnColor,
+              );
+            }(),
+          ),
+        ],
+      ],
     );
   }
 }

@@ -55,7 +55,8 @@ final lobbyNotifierProvider = StateNotifierProvider<LobbyNotifier, LobbyState>((
 ) {
   final ws = ref.watch(webSocketServiceProvider);
   final repo = ref.watch(gameRepositoryProvider);
-  return LobbyNotifier(ws, repo);
+  final prefs = ref.watch(preferencesServiceProvider);
+  return LobbyNotifier(ws, repo, prefs);
 });
 
 /// Provides the [GameNotifier] that manages in-game state.

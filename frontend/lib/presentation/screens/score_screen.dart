@@ -35,6 +35,8 @@ class _ScoreScreenState extends ConsumerState<ScoreScreen> {
     // Request score in case it hasn't arrived yet
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(gameNotifierProvider(widget.gameId).notifier).requestScore();
+      // Remove the local game entry now that the game has ended.
+      ref.read(preferencesServiceProvider).deleteGame(widget.gameId);
     });
   }
 
