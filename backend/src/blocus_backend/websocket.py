@@ -147,12 +147,15 @@ async def _handle_message(
                 await manager.claim_seat(request.game_id, request.player_id, websocket)
             snapshot = await service.state_snapshot(request.game_id)
             if request.player_id is not None:
-                await manager.broadcast(request.game_id, {
-                    "type": "player_joined",
-                    "game_id": request.game_id,
-                    "player_id": request.player_id,
-                    "state": snapshot["state"],
-                })
+                await manager.broadcast(
+                    request.game_id,
+                    {
+                        "type": "player_joined",
+                        "game_id": request.game_id,
+                        "player_id": request.player_id,
+                        "state": snapshot["state"],
+                    },
+                )
             await websocket.send_json(snapshot)
         elif action == "request_state":
             await websocket.send_json(await service.state_snapshot(_game_id(payload)))
