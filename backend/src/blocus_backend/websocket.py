@@ -5,10 +5,15 @@ from collections import defaultdict
 from typing import Any
 
 from fastapi import WebSocket, WebSocketDisconnect
+from pydantic import ValidationError
 
 from blocus_backend.event_bus import EventSubscription, GameEventBus
-from blocus_backend.schemas import SubscribeGameRequest
-from blocus_backend.service import GameService, ProtocolError
+from blocus_backend.schemas import LeaveGameRequest, SubscribeGameRequest
+from blocus_backend.service import (
+    GameService,
+    ProtocolError,
+    validation_error_to_protocol_error,
+)
 
 log = logging.getLogger(__name__)
 
@@ -75,6 +80,24 @@ class ConnectionManager:
             event_subscription = self._event_subscriptions.pop(game_id, None)
             if event_subscription is not None:
                 await event_subscription.close()
+
+    async def leave(self, game_id: str, websocket: WebSocket) -> None:
+        """Release this connection's seat and subscription for a single game.
+
+        Unlike disconnect(), other games this connection holds are untouched.
+        """
+        player_id = self._connection_seats.get(websocket, {}).pop(game_id, None)
+        if player_id is not None and self._seats.get((game_id, player_id)) is websocket:
+            del self._seats[(game_id, player_id)]
+
+        sockets = self._subscriptions.get(game_id)
+        if sockets is not None:
+            sockets.discard(websocket)
+            if not sockets:
+                del self._subscriptions[game_id]
+                event_subscription = self._event_subscriptions.pop(game_id, None)
+                if event_subscription is not None:
+                    await event_subscription.close()
 
     async def broadcast(self, game_id: str, event: dict[str, Any]) -> None:
         await self._event_bus.publish(game_id, event)
@@ -157,6 +180,23 @@ async def _handle_message(
                     },
                 )
             await websocket.send_json(snapshot)
+        elif action == "list_games":
+            await websocket.send_json(await service.list_games())
+        elif action == "leave_game":
+            leave_request = LeaveGameRequest.model_validate(payload)
+            player_id = manager.seat_for_connection(websocket, leave_request.game_id)
+            await manager.leave(leave_request.game_id, websocket)
+            if player_id is not None:
+                snapshot = await service.state_snapshot(leave_request.game_id)
+                await manager.broadcast(
+                    leave_request.game_id,
+                    {
+                        "type": "player_left",
+                        "game_id": leave_request.game_id,
+                        "player_id": player_id,
+                        "state": snapshot["state"],
+                    },
+                )
         elif action == "request_state":
             await websocket.send_json(await service.state_snapshot(_game_id(payload)))
         elif action == "request_legal_moves":
@@ -176,6 +216,9 @@ async def _handle_message(
             await _broadcast_with_ai_follow_up(service, manager, event)
         else:
             await websocket.send_json(_error("unknown_action", f"Unknown action: {action}"))
+    except ValidationError as error:
+        protocol_error = validation_error_to_protocol_error(error)
+        await websocket.send_json(_error(protocol_error.code, protocol_error.message))
     except ProtocolError as error:
         await websocket.send_json(_error(error.code, error.message))
     except Exception:

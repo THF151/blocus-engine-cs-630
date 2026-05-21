@@ -42,6 +42,7 @@ class FourPlayerPlayers(BaseModel):
 
 class _CreateBase(BaseModel):
     game_id: str | None = None
+    name: str | None = None
     scoring: str = "basic"
 
 
@@ -72,6 +73,7 @@ class DuoCreateGameRequest(BaseModel):
     instead of letting the engine raise a generic ``invalid_command``."""
 
     game_id: str | None = None
+    name: str | None = None
     mode: str
     players: DuoPlayers
     first_color: str = "black"
@@ -109,5 +111,10 @@ class AttachAiRequest(BaseModel):
 
 
 class SubscribeGameRequest(BaseModel):
+    game_id: str = Field(min_length=1)
+    player_id: str | None = None
+
+
+class LeaveGameRequest(BaseModel):
     game_id: str = Field(min_length=1)
     player_id: str | None = None

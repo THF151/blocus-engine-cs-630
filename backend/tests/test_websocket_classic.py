@@ -730,3 +730,123 @@ def test_seat_takeover_evicts_existing_connection() -> None:
             event = second.receive_json()
 
     assert event["type"] == "move_applied"
+
+
+def test_list_games_returns_created_games_with_names() -> None:
+    client = make_client()
+
+    with client.websocket_connect("/ws") as ws:
+        for game_id, name in (("game-alpha", "Alpha"), ("game-beta", "Beta")):
+            ws.send_json(
+                {
+                    "action": "create_game",
+                    "payload": {
+                        "game_id": game_id,
+                        "name": name,
+                        "mode": "two_player",
+                        "players": {"blue_red": "p1", "yellow_green": "p2"},
+                    },
+                }
+            )
+            created = ws.receive_json()
+            assert created["type"] == "game_created"
+            assert created["name"] == name
+
+        ws.send_json({"action": "list_games", "payload": {}})
+        listing = ws.receive_json()
+
+    assert listing["type"] == "games_list"
+    games = {game["game_id"]: game for game in listing["games"]}
+    assert set(games) == {"game-alpha", "game-beta"}
+    assert games["game-alpha"]["name"] == "Alpha"
+    assert games["game-beta"]["name"] == "Beta"
+    assert games["game-alpha"]["mode"] == "two_player"
+
+
+def test_leave_game_broadcasts_player_left_and_frees_seat() -> None:
+    client = make_client()
+
+    with client.websocket_connect("/ws") as owner:
+        _create_two_player_game(owner, "game-leave")
+
+        with client.websocket_connect("/ws") as spectator:
+            spectator.send_json({"action": "subscribe_game", "payload": {"game_id": "game-leave"}})
+            assert spectator.receive_json()["type"] == "state_snapshot"
+
+            owner.send_json(
+                {
+                    "action": "subscribe_game",
+                    "payload": {"game_id": "game-leave", "player_id": "player-one"},
+                }
+            )
+            assert owner.receive_json()["type"] == "player_joined"
+            assert owner.receive_json()["type"] == "state_snapshot"
+            assert spectator.receive_json()["type"] == "player_joined"
+
+            owner.send_json(
+                {
+                    "action": "leave_game",
+                    "payload": {"game_id": "game-leave", "player_id": "player-one"},
+                }
+            )
+            left = spectator.receive_json()
+
+            # The seat is now free: the spectator can claim it without a kick.
+            spectator.send_json(
+                {
+                    "action": "subscribe_game",
+                    "payload": {"game_id": "game-leave", "player_id": "player-one"},
+                }
+            )
+            assert spectator.receive_json()["type"] == "player_joined"
+            assert spectator.receive_json()["type"] == "state_snapshot"
+
+    assert left["type"] == "player_left"
+    assert left["game_id"] == "game-leave"
+    assert left["player_id"] == "player-one"
+
+
+def test_subscribe_game_without_game_id_returns_missing_field() -> None:
+    client = make_client()
+
+    with client.websocket_connect("/ws") as ws:
+        ws.send_json({"action": "subscribe_game", "payload": {}})
+        event = ws.receive_json()
+
+    assert event["type"] == "error"
+    assert event["code"] == "missing_field"
+
+
+def test_leave_game_without_game_id_returns_missing_field() -> None:
+    client = make_client()
+
+    with client.websocket_connect("/ws") as ws:
+        ws.send_json({"action": "leave_game", "payload": {}})
+        event = ws.receive_json()
+
+    assert event["type"] == "error"
+    assert event["code"] == "missing_field"
+
+
+def test_leave_game_when_never_subscribed_is_silent_noop() -> None:
+    client = make_client()
+
+    with client.websocket_connect("/ws") as ws:
+        ws.send_json({"action": "leave_game", "payload": {"game_id": "ghost-game"}})
+        # No response is emitted for the no-op leave; the next action proves the
+        # connection is still usable and no stray error was queued.
+        ws.send_json({"action": "list_games", "payload": {}})
+        event = ws.receive_json()
+
+    assert event["type"] == "games_list"
+
+
+def test_list_games_returns_empty_when_no_games_exist() -> None:
+    client = make_client()
+
+    with client.websocket_connect("/ws") as ws:
+        ws.send_json({"action": "list_games", "payload": {}})
+        event = ws.receive_json()
+
+    assert event["type"] == "games_list"
+    assert event["games"] == []

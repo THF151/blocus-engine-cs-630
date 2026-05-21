@@ -154,3 +154,57 @@ async def test_redis_get_game_raises_when_missing() -> None:
 
     with pytest.raises(GameNotFoundError):
         await repo.get_game("missing")
+
+
+@pytest.mark.asyncio
+async def test_inmemory_list_game_summaries_returns_created_games() -> None:
+    repo = InMemoryGameRepository()
+    await repo.save_game(
+        "g1",
+        "{}",
+        {"name": "Alpha", "mode": "two_player", "scoring": "basic"},
+        expected_version=None,
+    )
+    await repo.save_game("g2", "{}", {"name": None, "mode": "duo"}, expected_version=None)
+
+    summaries = {s.game_id: s for s in await repo.list_game_summaries()}
+
+    assert set(summaries) == {"g1", "g2"}
+    assert summaries["g1"].name == "Alpha"
+    assert summaries["g1"].mode == "two_player"
+    assert summaries["g2"].name is None
+    assert summaries["g2"].mode == "duo"
+
+
+@pytest.mark.asyncio
+async def test_redis_list_game_summaries_returns_indexed_games() -> None:
+    repo = _redis_repo()
+    await repo.save_game(
+        "g1",
+        "{}",
+        {"name": "Alpha", "mode": "two_player", "scoring": "basic"},
+        expected_version=None,
+    )
+    await repo.save_game(
+        "g2", "{}", {"name": "Beta", "mode": "duo", "scoring": "advanced"}, expected_version=None
+    )
+
+    summaries = {s.game_id: s for s in await repo.list_game_summaries()}
+
+    assert set(summaries) == {"g1", "g2"}
+    assert summaries["g1"].name == "Alpha"
+    assert summaries["g2"].name == "Beta"
+    assert summaries["g2"].version == 1
+
+
+@pytest.mark.asyncio
+async def test_redis_list_game_summaries_skips_stale_index_entries() -> None:
+    client = FakeAsyncRedis(decode_responses=True)
+    repo = RedisGameRepository(redis_client=client)
+    await repo.save_game("g1", "{}", {"name": "Alpha", "mode": "duo"}, expected_version=None)
+    # Leave a dangling id in the index whose game hash never existed.
+    await client.sadd("blocus:games", "ghost")
+
+    summaries = await repo.list_game_summaries()
+
+    assert [s.game_id for s in summaries] == ["g1"]

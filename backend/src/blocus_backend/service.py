@@ -5,6 +5,7 @@ import json
 import logging
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
@@ -115,7 +116,27 @@ class GameService:
         )
         with _map_engine_errors():
             view = self._engine.state_view(state)
-        return _event("game_created", normalized["game_id"], view)
+        event = _event("game_created", normalized["game_id"], view)
+        event["name"] = normalized.get("name")
+        return event
+
+    async def list_games(self) -> dict[str, Any]:
+        summaries = await self._repository.list_game_summaries()
+        summaries.sort(key=lambda s: s.created_at or "", reverse=True)
+        return {
+            "type": "games_list",
+            "games": [
+                {
+                    "game_id": summary.game_id,
+                    "name": summary.name,
+                    "mode": summary.mode,
+                    "scoring": summary.scoring,
+                    "players": summary.players,
+                    "created_at": summary.created_at,
+                }
+                for summary in summaries
+            ],
+        }
 
     async def state_snapshot(self, game_id: str) -> dict[str, Any]:
         record = await self._record(game_id)
@@ -324,10 +345,10 @@ def _parse[ModelT: BaseModel](payload: dict[str, Any], model: type[ModelT]) -> M
     try:
         return model.model_validate(payload)
     except ValidationError as error:
-        raise _validation_error_to_protocol_error(error) from error
+        raise validation_error_to_protocol_error(error) from error
 
 
-def _validation_error_to_protocol_error(error: ValidationError) -> ProtocolError:
+def validation_error_to_protocol_error(error: ValidationError) -> ProtocolError:
     first = error.errors()[0]
     loc: tuple[Any, ...] = first.get("loc", ())
     msg = first.get("msg", "validation failed")
@@ -429,6 +450,7 @@ def _scheduled_shared_green_player(
 def _normalize_two_player(request: TwoPlayerCreate) -> dict[str, Any]:
     return {
         "game_id": request.game_id or str(uuid4()),
+        "name": request.name,
         "mode": "two_player",
         "scoring": _scoring(request.scoring),
         "players": request.players.model_dump(),
@@ -439,6 +461,7 @@ def _normalize_two_player(request: TwoPlayerCreate) -> dict[str, Any]:
 def _normalize_three_player(request: ThreePlayerCreate) -> dict[str, Any]:
     return {
         "game_id": request.game_id or str(uuid4()),
+        "name": request.name,
         "mode": "three_player",
         "scoring": _scoring(request.scoring),
         "players": request.players.model_dump(),
@@ -450,6 +473,7 @@ def _normalize_four_player(request: FourPlayerCreate) -> dict[str, Any]:
     first_color = _color_for_mode(request.first_color, "four_player")
     return {
         "game_id": request.game_id or str(uuid4()),
+        "name": request.name,
         "mode": "four_player",
         "scoring": _scoring(request.scoring),
         "players": request.players.model_dump(),
@@ -465,6 +489,7 @@ def _normalize_duo(request: DuoCreateGameRequest) -> dict[str, Any]:
         raise ProtocolError("invalid_scoring", "Duo requires advanced scoring")
     return {
         "game_id": request.game_id or str(uuid4()),
+        "name": request.name,
         "mode": "duo",
         "scoring": "advanced",
         "players": request.players.model_dump(),
@@ -479,6 +504,8 @@ def _metadata_from_config(config: dict[str, Any]) -> dict[str, Any]:
         "players": config["players"],
         "turn_order": config["turn_order"],
         "ai_seats": [],
+        "name": config.get("name"),
+        "created_at": datetime.now(UTC).isoformat(),
     }
 
 

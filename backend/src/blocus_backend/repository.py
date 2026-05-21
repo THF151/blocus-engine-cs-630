@@ -17,6 +17,29 @@ class GameRecord:
     version: int
 
 
+@dataclass(frozen=True)
+class GameSummary:
+    game_id: str
+    name: str | None
+    mode: str
+    scoring: str
+    players: dict[str, Any]
+    created_at: str | None
+    version: int
+
+
+def _summary_from(game_id: str, metadata: dict[str, Any], version: int) -> GameSummary:
+    return GameSummary(
+        game_id=game_id,
+        name=metadata.get("name"),
+        mode=str(metadata.get("mode", "")),
+        scoring=str(metadata.get("scoring", "")),
+        players=metadata.get("players", {}),
+        created_at=metadata.get("created_at"),
+        version=version,
+    )
+
+
 class GameNotFoundError(KeyError):
     pass
 
@@ -50,6 +73,8 @@ class GameRepository(Protocol):
 
     async def get_game(self, game_id: str) -> GameRecord: ...
 
+    async def list_game_summaries(self) -> list[GameSummary]: ...
+
 
 class InMemoryGameRepository:
     def __init__(self) -> None:
@@ -76,6 +101,12 @@ class InMemoryGameRepository:
             return self._records[game_id]
         except KeyError as error:
             raise GameNotFoundError(game_id) from error
+
+    async def list_game_summaries(self) -> list[GameSummary]:
+        return [
+            _summary_from(record.game_id, record.metadata, record.version)
+            for record in self._records.values()
+        ]
 
 
 _CAS_SCRIPT = """
@@ -136,6 +167,10 @@ class RedisGameRepository:
         if int(result) != 1:
             raise OptimisticLockError(game_id, expected_version)
 
+        # Index the game id so list_game_summaries can enumerate without KEYS.
+        # SADD is idempotent; a stale id with no hash is skipped on read.
+        await self._redis.sadd(_INDEX_KEY, game_id)
+
     async def get_game(self, game_id: str) -> GameRecord:
         data = await self._redis.hgetall(_game_key(game_id))
         if not data:
@@ -148,10 +183,25 @@ class RedisGameRepository:
             version=int(data["version"]),
         )
 
+    async def list_game_summaries(self) -> list[GameSummary]:
+        game_ids = await self._redis.smembers(_INDEX_KEY)
+        summaries: list[GameSummary] = []
+        for game_id in game_ids:
+            metadata_raw, version_raw = await self._redis.hmget(
+                _game_key(game_id), "metadata", "version"
+            )
+            if metadata_raw is None or version_raw is None:
+                continue  # stale index entry; the game hash is gone
+            summaries.append(_summary_from(game_id, json.loads(metadata_raw), int(version_raw)))
+        return summaries
+
     async def aclose(self) -> None:
         aclose = getattr(self._redis, "aclose", None)
         if aclose is not None:
             await aclose()
+
+
+_INDEX_KEY = "blocus:games"
 
 
 def _game_key(game_id: str) -> str:

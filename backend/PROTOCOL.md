@@ -103,6 +103,7 @@ Payload (one of `TwoPlayerCreate` / `ThreePlayerCreate` / `FourPlayerCreate` /
 |--------------|-----------------------------------|----------|--------------------------------------------|
 | `mode`       | `"two_player"` \| `"three_player"` \| `"four_player"` \| `"duo"` | yes      |                                            |
 | `game_id`    | string                            | no       | UUID generated if omitted                  |
+| `name`       | string                            | no       | Human-readable game name; surfaced in `game_created` and `list_games`. Null if omitted. |
 | `scoring`    | `"basic"` \| `"advanced"`         | no       | Defaults to `"basic"`. For Duo, **must** be `"advanced"` (Literal-constrained; default is `"advanced"`). |
 | `players`    | mode-specific (see below)         | yes      |                                            |
 | `first_color`| mode-specific (see below)         | no       | Color whose player starts. See per-mode defaults below. |
@@ -164,6 +165,61 @@ Re-fetches the current game state.
 Payload: `{"game_id": "<id>"}`.
 Success event (unicast): `state_snapshot`.
 Errors: `game_not_found`, `missing_field`.
+
+---
+
+### `list_games`
+
+Lists the games that exist on the server (created by any client), so a lobby
+can show joinable games instead of relying on client-local storage. No seat
+required. Summaries are built from persisted metadata only — they do **not**
+include live status or live seat occupancy.
+
+Payload: `{}` (no fields).
+Success event (unicast): `games_list`.
+
+```json
+{
+  "type": "games_list",
+  "games": [
+    {
+      "game_id": "game-42",
+      "name": "Friday Night Blokus",
+      "mode": "four_player",
+      "scoring": "advanced",
+      "players": {"blue": "alice", "yellow": "bob", "red": "carol", "green": "dave"},
+      "created_at": "2026-05-20T18:30:00+00:00"
+    }
+  ]
+}
+```
+
+Ordered newest-first by `created_at`. `players` is the *initial* color→player
+assignment from creation, not live occupancy.
+
+---
+
+### `leave_game`
+
+Releases this connection's seat for a game and unsubscribes it from that
+game's events. Other games the connection holds are untouched. The freed seat
+can immediately be claimed by another connection via `subscribe_game`.
+
+Leaving does **not** alter game state: if it was the leaver's turn, that color
+stalls until the seat is re-claimed or an AI is attached. A seat already backed
+by `attach_ai` resumes AI play automatically once the human leaves.
+
+Payload (`LeaveGameRequest`):
+
+| Field       | Type   | Required | Notes                                  |
+|-------------|--------|----------|----------------------------------------|
+| `game_id`   | string | yes      |                                        |
+| `player_id` | string | no       | Informational; the seat is resolved from the connection. |
+
+Side effect (broadcast to remaining subscribers): `player_left` — only when the
+leaving connection actually held a seat. A spectator leaving, or a leave on a
+game the connection never subscribed to, is a silent no-op (no broadcast, no
+error). The leaver receives no acknowledgement.
 
 ---
 
@@ -301,6 +357,8 @@ All share the same `state` payload (the current state view). The
 - `move_applied` becomes `game_finished` (same payload shape) on the move
   that ends the game.
 - `game_joined` is emitted on `attach_ai`.
+- `game_created` additionally carries a top-level `name` field (the game name,
+  or null) alongside `state`.
 
 ### `player_joined`
 
@@ -318,6 +376,26 @@ with a `player_id`. Allows lobby UIs to show who has joined without polling.
 
 The joining player also receives this broadcast, followed by a unicast
 `state_snapshot`. Clients may use whichever they prefer.
+
+### `player_left`
+
+Broadcast to the remaining subscribers when a seated connection sends
+`leave_game`. The leaver does not receive it (already unsubscribed). Mirror of
+`player_joined`.
+
+```json
+{
+  "type": "player_left",
+  "game_id": "game-42",
+  "player_id": "alice",
+  "state": { ... }
+}
+```
+
+### `games_list`
+
+Unicast reply to `list_games`. See the [`list_games`](#list_games) action for
+the payload shape.
 
 ### `legal_moves`
 
