@@ -99,7 +99,7 @@ In a next sprint, we can develop a similar package to provide dart / ... binding
 
 ## 2. Guideline Applications
 
-### Application 1: `
+### Application 1: 
 `Detailed Personas (G2)` + `Proactive Ambiguity Clarification` (G3) from Requirements Team
 
 **Guideline Description:**  
