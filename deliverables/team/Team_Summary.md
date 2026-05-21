@@ -17,26 +17,18 @@
 
 ### Overview
 
-The project implements a full-stack Blokus Game Engine encompassing both Classic and Duo variants. The tech stack focuses on a **Rust** core engine for game logic and move validation, integrated via FFI into a **Python (FastAPI)** backend service. The backend architecture is cloud-native, orchestrating multiplayer connections via HTTP/WebSockets and utilizing **Redis** for robust state management. Players interact through a **Flutter** frontend that supports seamless multi-platform gameplay (iOS/Android/Web/Desktop).
+The project implements a full-stack Blokus Game Engine encompassing both Classic and Duo variants. The tech stack has a Rust core engine for game logic and move validation, integrated via FFI into a Python (FastAPI) backend service. The backend architecture is cloud-native and orchestrates multiplayer connections via HTTP/WebSockets and utilizes Redis for state management. Players interact through a Flutter frontend that supports iOS/Android/Web/Desktop
 
 ### Architecture Diagram
 
-```mermaid
-graph TD
-    F[Flutter Frontend] <-->|HTTP / WebSockets| B[FastAPI Backend Service]
-    B -->|FFI| R[Rust Core Engine]
-    B <-->|State Persistence| Redis[(Redis)]
-    A[AI Players] -->|Simulated Input| B
-    F -.->|FFI - Future Singleplayer| R
-```
+
 
 ### Key Components
 
-1. **Rust Core Engine:** Handles core rules, board dimensions, legal placement evaluations, turn tracking, and scoring calculations.
-2. **Backend Service Layer:** Manages request endpoints, WebSocket connections, concurrency, and interfaces directly with the Rust engine.
-3. **State Management:** Redis instance used specifically for horizontal scalability and managing active lobby/game states efficiently in the cloud.
-4. **AI Players:** Embedded simulation logics allowing automated agents to participate inside the backend loops.
-5. **Flutter Frontend:** Provides the interactive user interface, rendering lobbies, and facilitating real-time drag-and-drop gameplay syncing with the backend.
+1. **Rust Core Engine:** Handles core rules, board dimensions, legal placement evaluations, turn tracking, and scoring calculations
+2. **Backend Service Layer:** Manages request endpoints, WebSocket connections, concurrency, and interfaces directly with the Rust engine
+3. **State Management:** Redis instance used for horizontal scalability and managing active lobby/game states
+4. **Flutter Frontend:** Provides the interactive user interface, rendering lobbies, and facilitating real-time drag-and-drop gameplay syncing with the backend
 
 ---
 
@@ -44,14 +36,14 @@ graph TD
 
 ### High-Level Overview
 
-Describe which AI tools you used and where. Be specific about the tools/models and how they were integrated into your workflow.
+We used the latest available models for each phase and validated their output through our automated pipeline plus human (and cross-model) review. The table consolidates the per-member usage documented in the individual portfolios.
 
-| Phase                          | AI Tool/Model                                    | Usage                                                   | Validation Method                                   |
-|--------------------------------|--------------------------------------------------|---------------------------------------------------------|-----------------------------------------------------|
-| Requirements                   | GPT 5.5, GPT 5.4, Gemini 3.1 Pro                 | Requirements extraction and specification building      | Manual verification, LLM as a judge                 |
-| Design                         | Gemini 3.1 Pro, GPT 5.5                          | LLM ADR generation                                      | Manual review                                       |
-| Code Gen & Testing & Debugging | Codex, Claude Code, GitHub Copilot, GPT 5.5 Chat | FFI bindings, core logic, Flutter UI, and test suites   | Manual code execution, test suites, LLM code review |
-| Code Review                    | GPT 5.5                                          | Automated pull request PR feedback and structure checks | Manual verification                                 |
+| Phase                          | AI Tool/Model                                                        | Usage                                                                                                                                          | Validation Method                                                          |
+|--------------------------------|----------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------|
+| Requirements                   | GPT 5.5                                                             | Requirements elicitation with detailed personas and proactive ambiguity clarification                                                          | Manual review, LLM-as-judge                                                |
+| Design                         | GPT 5.5                                                             | ADR generation and UML sequence diagrams for the Python ↔ Rust flows                                                                           | Manual review, live diagram rendering against the code                     |
+| Code Gen & Testing & Debugging | Codex (GPT-5.x), Claude Code (Opus 4.7), GPT 5.5 Chat, GitHub Copilot | Rust engine, Python backend, and Flutter UI; test suites; planning and `PROTOCOL.md` drafting (Copilot only for occasional inline completion)   | `make check` (format, lint, strict typing, tests, coverage) + human review |
+| Code Review                    | Opus 4.7, cross-instance Codex ↔ Claude Code                         | PR review and serialized-codebase passes to catch logical errors and silent issues; one model reviewing another model's output to avoid self-review bias | Human review                                                               |
 
 
 ### AI Usage Policy
@@ -71,21 +63,24 @@ Describe any AI usage policies, guidelines, or constraints your team followed du
 
 ### What Worked Well
 
-- `[Result 1]`
-- `[Result 2]`
-- `[Result 3]`
+- The mode-aware engine configuration (`GameMode` / `GameConfig` / `Ruleset` / `BoardGeometry`) let Blokus Duo land as a small, additive change across all three layers instead of a rewrite — the headline result of the change request.
+- A strict CI pipeline (`make check`: formatting, linting, strict type checking, tests, and a coverage gate) enforced from day one kept quality high even though most of the code was LLM-generated.
+- The typed boundary — the engine's PyO3 `.pyi` stub plus the hand-written `PROTOCOL.md` — kept the Rust, Python, and Dart layers in sync and made grounded code generation reliable.
+- Cross-instance LLM review, where one model critiqued another model's output, caught bugs that a single model missed.
 
 ### What Failed or Was Challenging
 
-- `[Challenge 1]`
-- `[Challenge 2]`
-- `[Challenge 3]`
+- Without repository-grounding context, LLMs invented project-specific APIs and type signatures that looked plausible but did not exist.
+- Green tests and high coverage masked silent defects — a concurrency bug in the AI loop that blocked the event loop, and remediation loops that were tempted to weaken assertions instead of fixing the code.
+- Agentic-coding usage limits (Codex, Claude Code) became restrictive over the project — effectively about one large task every few hours — which is hard to rely on for continuous work.
+- Cross-platform frontend quirks: drag-and-drop worked on mobile but not on macOS, and the board rendered very small on phones.
 
 ### Lessons Learned
 
-- `[Lesson 1]`
-- `[Lesson 2]`
-- `[Lesson 3]`
+- Grounding context (type stubs, a minimal `AGENTS.md`) matters more than prompt cleverness for correctness.
+- A strong automated validation pipeline is the precondition for agentic coding to be trustworthy — without it there is no reliable remediation signal.
+- "Tests pass" certifies functional correctness, not non-functional properties such as concurrency and latency; those need their own checks.
+- Define the needed abstraction deliberately and early — the LLMs did not anticipate the Classic-to-Duo generalization on their own, which was the deliberate point of the change request.
 
 ---
 
@@ -93,20 +88,20 @@ Describe any AI usage policies, guidelines, or constraints your team followed du
 
 Provide links to notable counterexamples where guidelines from other teams did not work as expected.
 
-1. **Counterexample 1:** `[Title]`  
-   **Link:** `[Link to counterexample documentation]`  
-   **Guideline that Failed:** `[Name of guideline]`  
-   **What Happened:** `[Brief description]`
+1. **Counterexample 1:** Hallucinated project APIs under Atomic Task Decomposition
+   **Link:** [`Portfolio_Tobias_Friedrich.md`](../individual/Portfolio_Tobias_Friedrich.md) (Counterexample 1) and [`counterexample-atomic-decomposition-output.md`](../individual/evidence/counterexample-atomic-decomposition-output.md)
+   **Guideline that Failed:** Coding G4 — Atomic Task Decomposition
+   **What Happened:** Single-function prompts produced code that invented `Board` / `Piece` / `Position` types and ignored the crate's error conventions. Fixed by carrying repository context into each atomic prompt (Coding G1).
 
-2. **Counterexample 2:** `[Title]`  
-   **Link:** `[Link to counterexample documentation]`  
-   **Guideline that Failed:** `[Name of guideline]`  
-   **What Happened:** `[Brief description]`
+2. **Counterexample 2:** Passing tests certified a concurrency-broken AI loop
+   **Link:** [`Portfolio_Aleksander_Kasak.md`](../individual/Portfolio_Aleksander_Kasak.md) (Counterexample 1), commit [`05aa9f9`](https://github.com/THF151/blocus-engine-cs-630/commit/05aa9f96922f22a4ffe8a2c0bb2cfa1ab110a263)
+   **Guideline that Failed:** Coding G2: Interactive Test-Driven Validation (tests as source of truth)
+   **What Happened:** A green, ~89%-covered suite passed an AI loop that ran up to 10,000 iterations without yielding and blocked the worker's event loop. Outcome assertions cannot express responsiveness, so "tests pass" certified the wrong thing.
 
-3. **Counterexample 3:** `[Title]`  
-   **Link:** `[Link to counterexample documentation]`  
-   **Guideline that Failed:** `[Name of guideline]`  
-   **What Happened:** `[Brief description]`
+3. **Counterexample 3:** Validate-and-repair masked a real defect
+   **Link:** [`Portfolio_Tobias_Friedrich.md`](../individual/Portfolio_Tobias_Friedrich.md) (Counterexample 3) and [`Portfolio_Aleksander_Kasak.md`](../individual/Portfolio_Aleksander_Kasak.md) (Counterexample 3, commit [`0949b74`](https://github.com/THF151/blocus-engine-cs-630/commit/0949b74))
+   **Guideline that Failed:** Testing validate-and-repair loop / Coding G3 — Iterative Remediation
+   **What Happened:** When a generated test failed, the remediation loop "fixed" it by changing test data or weakening the assertion rather than fixing the system under test, which hid the underlying bug. The fix was to forbid the loop from editing assertions and require a human check of what the test still asserts.
 
 > **Note:** The link to counterexample documentation can be any repository path or platform link (e.g., issue)
 
